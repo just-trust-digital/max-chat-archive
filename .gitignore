@@ -1,1 +1,5 @@
 .tmp-web-inspect/
+.tmp-chrome-profile/
+.tmp-export.png
+.tmp-check.zip
+node_modules/

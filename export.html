@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css"></head>
+<body class="app">
+  <main class="shell">
+    <header class="topbar"><div class="brand"><span class="mark">M</span><span>MAX Архив</span></div><span class="local">Локальный архив</span></header>
+    <section class="hero"><div class="eyebrow">ЭКСПОРТ</div><h1>История чатов</h1><p>Выберите переписки и данные для архива.</p></section>
+    <div id="status" class="notice" role="status">Подключаемся к вкладке MAX…</div>
+    <div class="grid">
+      <section class="card">
+        <div class="card-head"><div><h2>Чаты</h2><p>Доступные в текущем списке MAX</p></div><button id="refresh" class="text-button" type="button">Обновить</button></div>
+        <fieldset class="scope"><legend class="sr-only">Область экспорта</legend>
+          <label><input type="radio" name="scope" value="current" checked> Открытый чат</label>
+          <label><input type="radio" name="scope" value="selected"> Выбранные чаты</label>
+          <label><input type="radio" name="scope" value="all"> Все найденные чаты</label>
+        </fieldset>
+        <div id="chat-list" class="chat-list" aria-live="polite"></div>
+        <p class="hint">Поиск охватывает текущую папку MAX. Для другой папки переключитесь в MAX и обновите список.</p>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Содержимое</h2><p>Параметры архива</p></div></div>
+        <div class="fields">
+          <label class="field">Формат
+            <select id="format"><option value="html-json">HTML + JSON</option><option value="json">JSON</option><option value="html">HTML</option><option value="csv">CSV</option><option value="txt">TXT</option></select>
+          </label>
+          <div class="pair"><label class="field">С даты<input id="from" type="date"></label><label class="field">По дату<input id="to" type="date"></label></div>
+          <label class="check"><input id="media" type="checkbox" checked><span><strong>Файлы и медиа</strong><small>Доступные адреса будут включены в архив</small></span></label>
+          <label class="check"><input id="download-media" type="checkbox"><span><strong>Скачать вложения</strong><small>До 25 МБ на файл и 250 МБ на архив</small></span></label>
+          <label class="check"><input id="links" type="checkbox" checked><span><strong>Ссылки</strong><small>Сохранить адреса из сообщений</small></span></label>
+          <label class="check"><input id="reactions" type="checkbox" checked><span><strong>Реакции</strong><small>Если они видны в веб-версии</small></span></label>
+          <label class="field">Максимум сообщений на чат<input id="limit" type="number" min="1" max="100000" value="10000"></label>
+        </div>
+      </section>
+    </div>
+    <section class="runbar"><div><strong id="selection-count">Открытый чат</strong><div class="fine">Вкладка MAX должна оставаться открытой во время экспорта.</div></div><div class="actions"><button id="cancel" class="secondary" hidden>Остановить</button><button id="start" class="primary">Скачать ZIP</button></div></section>
+    <section id="progress-panel" class="card progress-panel" hidden><h2>Ход экспорта</h2><progress id="progress" max="100" value="0"></progress><div id="progress-text" role="status"></div><ul id="log"></ul></section>
+  </main>
+  <script src="zip.js"></script>
+  <script src="format.js"></script>
+  <script src="export.js"></script>
+</body>
+</html>

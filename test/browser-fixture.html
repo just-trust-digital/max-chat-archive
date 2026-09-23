@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>MAX fixture</title>
+<style>.aside{height:80px;overflow-y:auto}.history{height:90px;overflow-y:auto}.wrapper--withActions,.messageWrapper{height:26px}</style>
+<div class="aside" id="aside"></div>
+<div class="openedChat"><div class="header"><span class="title">Тестовый чат</span></div><div class="history" id="history"></div></div>
+<output id="result">pending</output>
+<script>
+  let connectListener, messageListener;
+  window.chrome = { runtime: { onConnect: { addListener(fn) { connectListener = fn; } } } };
+  for (let i = 0; i < 10; i++) {
+    const row = document.createElement('div'); row.className = 'wrapper--withActions';
+    row.innerHTML = `<div class="cell"><h3 class="title">Чат ${i}</h3></div>`;
+    document.getElementById('aside').append(row);
+  }
+  for (let i = 0; i < 20; i++) {
+    const row = document.createElement('div'); row.className = 'messageWrapper';
+    row.innerHTML = `<div class="message"><div class="bubbleContent">Сообщение ${i}</div><time datetime="2026-09-24T12:00:00">12:00</time></div>`;
+    document.getElementById('history').append(row);
+  }
+</script>
+<script src="../content.js"></script>
+<script>
+  const results = [], chunks = new Map();
+  const port = { name: 'max-export', onMessage: { addListener(fn) { messageListener = fn; } }, postMessage(message) {
+    if (message.type === 'chunk') { chunks.set(message.id, [...(chunks.get(message.id) || []), ...message.messages]); return; }
+    if (message.type !== 'result') return;
+    if (message.value.messages) message.value.messages = chunks.get(message.id) || message.value.messages;
+    results.push(message);
+    if (message.id === 1) messageListener({ type: 'export', id: 2, options: { limit: 100 } });
+    if (message.id === 2) messageListener({ type: 'export', id: 3, chat: results[0].value.chats[2], options: { limit: 100 } });
+    if (message.id === 3) document.getElementById('result').textContent = JSON.stringify({ chats: results[0].value.chats.length, messages: results[1].value.messages.length, complete: results[1].value.complete, selected: message.value.messages.length });
+  } };
+  connectListener(port);
+  messageListener({ type: 'discover', id: 1 });
+</script>
