@@ -6,7 +6,7 @@ const path = require('node:path');
 
 function loadContent(document) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder };})();');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -189,6 +189,12 @@ test('rerendered selected chat row retains identity despite changed preview text
   assert.doesNotThrow(() => guard());
   selected = makeRow('Другой чат', 'новое сообщение');
   assert.throws(() => guard(), /больше не открыт/);
+});
+
+test('chat archive title excludes changing online member count', () => {
+  const root = { querySelector: () => ({ textContent: '2 "А" класс 1 из 22 в сети' }) };
+  const content = loadContent({ querySelector: () => root });
+  assert.equal(content.openedTitle(), '2 "А" класс');
 });
 
 test('repeated MAX window with one changed message does not triple the archive', () => {

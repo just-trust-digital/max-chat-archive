@@ -52,7 +52,8 @@
   function openedTitle() {
     const root = document.querySelector('.openedChat');
     if (!root) return null;
-    return root.querySelector('.header .title, .header [class*="title"], header [class*="title"]')?.textContent?.trim() || document.title.replace(/\s*[|—-]\s*MAX.*$/i, '').trim() || 'Открытый чат';
+    const raw = root.querySelector('.header .title, .header [class*="title"], header [class*="title"]')?.textContent?.trim() || document.title.replace(/\s*[|—-]\s*MAX.*$/i, '').trim() || 'Открытый чат';
+    return raw.replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').trim();
   }
   function comparableTitle(title) {
     return (title || '').replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
