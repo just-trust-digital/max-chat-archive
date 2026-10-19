@@ -102,7 +102,57 @@
     });
   }
   function signature(item) {
-    return JSON.stringify([item.time, item.author, item.direction, item.text, item.attachments.map(a => a.url || a.name)]);
+    return JSON.stringify([item.time, item.author, item.direction, item.text, item.attachments.map(a => [a.kind, a.source?.startsWith('download-button') ? 'download-button' : a.name])]);
+  }
+  function captureButton(button) {
+    return new Promise(resolve => {
+      const marker = 'max-archive-download-capture';
+      const nonce = crypto.randomUUID();
+      let ready = false;
+      const timer = setTimeout(() => finish(null), 15000);
+      const readyTimer = setTimeout(() => { if (!ready) finish(null); }, 800);
+      function finish(value) {
+        clearTimeout(timer); clearTimeout(readyTimer);
+        window.removeEventListener('message', onMessage);
+        window.postMessage({ marker, type: 'cancel', nonce }, location.origin);
+        resolve(value);
+      }
+      function onMessage(event) {
+        if (event.source !== window || event.origin !== location.origin || event.data?.marker !== marker || event.data.nonce !== nonce) return;
+        if (event.data.type === 'ready') {
+          ready = true;
+          try { button.click(); } catch { finish(null); }
+        }
+        if (event.data.type === 'captured') finish({ url: event.data.href, name: event.data.name });
+      }
+      window.addEventListener('message', onMessage);
+      window.postMessage({ marker, type: 'arm', nonce }, location.origin);
+    });
+  }
+  async function captureVisibleUrls(items, options, cache, progress, title) {
+    if (!options.downloadMedia || !options.media || typeof window === 'undefined') return items;
+    const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
+    for (let index = 0; index < rows.length; index++) {
+      const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"]')];
+      const files = items[index]?.attachments.filter(attachment => attachment.source === 'download-button') || [];
+      const messageKey = items[index] && signature(items[index]);
+      for (let fileIndex = 0; fileIndex < Math.min(buttons.length, files.length); fileIndex++) {
+        if (cancelled) return items;
+        const key = `${messageKey}:${fileIndex}`;
+        if (!cache.has(key)) {
+          progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size + 1 });
+          cache.set(key, await captureButton(buttons[fileIndex]));
+        }
+        const captured = cache.get(key);
+        if (captured?.url && /^https:\/\//i.test(captured.url)) {
+          files[fileIndex].url = captured.url;
+          files[fileIndex].downloadable = true;
+          files[fileIndex].source = 'download-button-url';
+          if (captured.name) files[fileIndex].name = captured.name;
+        }
+      }
+    }
+    return items;
   }
   function carryDates(items) {
     let date = '';
@@ -140,6 +190,8 @@
     }
     if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
     let messages = snapshot();
+    const captureCache = new Map();
+    await captureVisibleUrls(messages, options, captureCache, progress, title);
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps };
     const started = Date.now();
@@ -151,7 +203,9 @@
       scroller.scrollTop = Math.max(0, previousTop - Math.max(300, scroller.clientHeight * 0.75));
       await wait(450);
       const before = messages.length;
-      const merged = mergeOlder(messages, snapshot());
+      const current = snapshot();
+      await captureVisibleUrls(current, options, captureCache, progress, title);
+      const merged = mergeOlder(messages, current);
       messages = merged.items;
       if (merged.gap) gaps++;
       progress({ title, count: messages.length, round });
@@ -173,10 +227,22 @@
       if (cancelled) throw new Error('Остановлено пользователем.');
       const row = visibleRows().find(row => rowKey(row) === info.key);
       if (row) {
+        const previousRoot = document.querySelector('.openedChat');
+        const previousLocation = location.href;
+        const previousTitle = openedTitle();
         row.click();
+        let switched = false;
         for (let attempt = 0; attempt < 30; attempt++) {
           await wait(200);
-          if (document.querySelector('.openedChat .messageWrapper, .openedChat .emptyHistory')) return;
+          const root = document.querySelector('.openedChat');
+          const routeChanged = location.href !== previousLocation;
+          const titleChanged = openedTitle() !== previousTitle;
+          const rootChanged = root && root !== previousRoot;
+          switched ||= routeChanged || titleChanged || rootChanged;
+          if (switched && root?.querySelector('.messageWrapper, .emptyHistory')) {
+            await wait(300);
+            if (document.querySelector('.openedChat') === root && root.querySelector('.messageWrapper, .emptyHistory')) return;
+          }
         }
         throw new Error(`Чат «${info.title}» не открылся.`);
       }

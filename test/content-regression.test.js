@@ -6,7 +6,7 @@ const path = require('node:path');
 
 function loadContent(document) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen };})();');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -108,4 +108,34 @@ test('export waits for a scrollable history before treating 30 visible messages 
   setTimeout(() => { mounted = 100; scroller.scrollHeight = 1000; }, 50);
   const result = await content.exportOpen({ limit: 100 }, () => {});
   assert.equal(result.messages.length, 100);
+});
+
+test('switching chats waits for the new conversation instead of accepting old messages', async () => {
+  let root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: 'Первый чат' } };
+  const location = { href: 'https://web.max.ru/c/first' };
+  const row = {
+    innerText: 'Второй чат',
+    getClientRects: () => [1],
+    getAttribute: () => null,
+    querySelector: selector => selector === 'a[href]' ? { getAttribute: () => '/c/second' } : { textContent: 'Второй чат' },
+    click() {
+      setTimeout(() => {
+        location.href = 'https://web.max.ru/c/second';
+        root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: 'Второй чат' } };
+      }, 450);
+    }
+  };
+  const list = { scrollTop: 0, clientHeight: 500 };
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.aside' ? list : selector === '.openedChat' ? root : null,
+    querySelectorAll: () => [row]
+  };
+  const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.openChatUnderTest = openChat;})();');
+  const context = { document, location, setTimeout, getComputedStyle: () => ({ overflowY: 'visible' }), chrome: { runtime: { onConnect: { addListener() {} } } } };
+  vm.runInNewContext(instrumented, context);
+  const started = Date.now();
+  await context.openChatUnderTest({ key: '/c/second', title: 'Второй чат' });
+  assert.ok(Date.now() - started >= 700, 'must wait for new chat content after clicking');
 });

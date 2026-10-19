@@ -1,12 +1,18 @@
 {
   "manifest_version": 3,
   "name": "MAX Архив",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Локальный экспорт чатов MAX в ZIP",
-  "permissions": ["tabs", "storage"],
-  "host_permissions": ["https://web.max.ru/*", "https://st.max.ru/*"],
+  "permissions": ["tabs", "storage", "downloads"],
+  "host_permissions": ["https://*.max.ru/*"],
   "action": { "default_title": "Экспорт MAX", "default_popup": "popup.html" },
   "content_scripts": [
+    {
+      "matches": ["https://web.max.ru/*"],
+      "js": ["download-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": ["https://web.max.ru/*"],
       "js": ["content.js"],
