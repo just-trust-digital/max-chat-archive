@@ -166,3 +166,27 @@ test('manual chat switch interrupts history reading without returning another ch
     if (!active) throw new Error('Другой чат открыт');
   }), /Другой чат открыт/);
 });
+
+test('rerendered selected chat row retains identity despite changed preview text', () => {
+  const makeRow = (title, preview) => ({
+    innerText: `${title}\n${preview}`,
+    querySelector(selector) {
+      if (selector === '.cell--selected') return {};
+      if (selector.includes('title')) return { textContent: title };
+      return null;
+    }
+  });
+  const original = makeRow('2 "А" класс', 'старое сообщение');
+  let selected = original;
+  const root = { querySelector: () => ({ textContent: '2 "А" класс 1 из 22 в сети' }) };
+  const document = {
+    querySelector: () => root,
+    querySelectorAll: () => [selected]
+  };
+  const content = loadContent(document);
+  const guard = content.activeChatGuard({ key: '2 "А" класс|старое сообщение', title: '2 "А" класс' }, original);
+  selected = makeRow('2 "А" класс', 'новое сообщение');
+  assert.doesNotThrow(() => guard());
+  selected = makeRow('Другой чат', 'новое сообщение');
+  assert.throws(() => guard(), /больше не открыт/);
+});

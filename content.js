@@ -58,18 +58,24 @@
     return (title || '').replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
   }
   function activeChatGuard(info, originalRow) {
+    const route = location.pathname;
+    const expectedTitle = comparableTitle(info.title);
     return () => {
-      const selected = visibleRows().find(row => row.querySelector('.cell--selected'));
-      if (!selected || (selected !== originalRow && rowKey(selected) !== info.key) || comparableTitle(openedTitle()) !== comparableTitle(info.title)) {
+      const selected = [...document.querySelectorAll(CHAT_ROWS)].find(row => row.querySelector('.cell--selected'));
+      const selectedMatches = selected === originalRow || selected && comparableTitle(titleOf(selected)) === expectedTitle;
+      if (!selectedMatches || comparableTitle(openedTitle()) !== expectedTitle || location.pathname !== route) {
         throw new Error(`Выбранный чат «${info.title}» больше не открыт в MAX. Экспорт остановлен без сохранения чужой переписки.`);
       }
     };
   }
   function currentChatGuard() {
     const title = openedTitle();
-    const selected = visibleRows().find(row => row.querySelector('.cell--selected'));
+    const route = location.pathname;
+    const selected = [...document.querySelectorAll(CHAT_ROWS)].find(row => row.querySelector('.cell--selected'));
+    const selectedTitle = selected && comparableTitle(titleOf(selected));
     return () => {
-      if (comparableTitle(openedTitle()) !== comparableTitle(title) || (selected && !selected.querySelector('.cell--selected'))) {
+      const currentSelected = [...document.querySelectorAll(CHAT_ROWS)].find(row => row.querySelector('.cell--selected'));
+      if (comparableTitle(openedTitle()) !== comparableTitle(title) || location.pathname !== route || (selected && (!currentSelected || comparableTitle(titleOf(currentSelected)) !== selectedTitle))) {
         throw new Error('Открытый чат изменился во время экспорта. Экспорт остановлен без сохранения чужой переписки.');
       }
     };
@@ -259,13 +265,13 @@
         if (!cell) throw new Error(`Строка чата «${info.title}» изменилась в MAX. Обновите список.`);
         progress({ title: info.title, count: 0, stage: 'opening' });
         cell.click();
-        const assertActive = activeChatGuard(info, row);
         for (let attempt = 0; attempt < 50; attempt++) {
           if (cancelled) throw new Error('Остановлено пользователем.');
           await wait(200);
           const root = document.querySelector('.openedChat');
           if (row.querySelector('.cell--selected') && comparableTitle(openedTitle()) === comparableTitle(info.title) && root?.querySelector('.messageWrapper, .emptyHistory')) {
             await wait(300);
+            const assertActive = activeChatGuard(info, row);
             assertActive();
             return assertActive;
           }
