@@ -6,7 +6,7 @@ const path = require('node:path');
 
 function loadContent(document) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat };})();');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -113,17 +113,22 @@ test('export waits for a scrollable history before treating 30 visible messages 
 test('switching chats waits for the new conversation instead of accepting old messages', async () => {
   let root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: 'Первый чат' } };
   const location = { href: 'https://web.max.ru/c/first' };
+  let selected = false;
+  let cellClicked = false;
+  const cell = { click() {
+    cellClicked = true;
+    setTimeout(() => {
+      selected = true;
+      location.href = 'https://web.max.ru/c/second';
+      root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: 'Второй чат 1 из 3 в сети' } };
+    }, 450);
+  } };
   const row = {
     innerText: 'Второй чат',
     getClientRects: () => [1],
     getAttribute: () => null,
-    querySelector: selector => selector === 'a[href]' ? { getAttribute: () => '/c/second' } : { textContent: 'Второй чат' },
-    click() {
-      setTimeout(() => {
-        location.href = 'https://web.max.ru/c/second';
-        root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: 'Второй чат' } };
-      }, 450);
-    }
+    querySelector: selector => selector === 'a[href]' ? { getAttribute: () => '/c/second' } : selector === '.cell--selected' ? (selected ? cell : null) : selector === '.cell' ? cell : { textContent: 'Второй чат' },
+    click() { throw Error('outer wrapper must not be clicked'); }
   };
   const list = { scrollTop: 0, clientHeight: 500 };
   const document = {
@@ -136,6 +141,10 @@ test('switching chats waits for the new conversation instead of accepting old me
   const context = { document, location, setTimeout, getComputedStyle: () => ({ overflowY: 'visible' }), chrome: { runtime: { onConnect: { addListener() {} } } } };
   vm.runInNewContext(instrumented, context);
   const started = Date.now();
-  await context.openChatUnderTest({ key: '/c/second', title: 'Второй чат' });
+  const guard = await context.openChatUnderTest({ key: '/c/second', title: 'Второй чат' });
+  assert.equal(cellClicked, true);
   assert.ok(Date.now() - started >= 700, 'must wait for new chat content after clicking');
+  guard();
+  selected = false;
+  assert.throws(() => guard(), /больше не открыт/);
 });

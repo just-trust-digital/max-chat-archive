@@ -54,6 +54,26 @@
     if (!root) return null;
     return root.querySelector('.header .title, .header [class*="title"], header [class*="title"]')?.textContent?.trim() || document.title.replace(/\s*[|—-]\s*MAX.*$/i, '').trim() || 'Открытый чат';
   }
+  function comparableTitle(title) {
+    return (title || '').replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+  }
+  function activeChatGuard(info, originalRow) {
+    return () => {
+      const selected = visibleRows().find(row => row.querySelector('.cell--selected'));
+      if (!selected || (selected !== originalRow && rowKey(selected) !== info.key) || comparableTitle(openedTitle()) !== comparableTitle(info.title)) {
+        throw new Error(`Выбранный чат «${info.title}» больше не открыт в MAX. Экспорт остановлен без сохранения чужой переписки.`);
+      }
+    };
+  }
+  function currentChatGuard() {
+    const title = openedTitle();
+    const selected = visibleRows().find(row => row.querySelector('.cell--selected'));
+    return () => {
+      if (comparableTitle(openedTitle()) !== comparableTitle(title) || (selected && !selected.querySelector('.cell--selected'))) {
+        throw new Error('Открытый чат изменился во время экспорта. Экспорт остановлен без сохранения чужой переписки.');
+      }
+    };
+  }
   function attachmentsOf(row) {
     const items = [];
     for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src],button[aria-label="Скачать"]')) {
@@ -176,7 +196,8 @@
     }
     return { items: carryDates(older.concat(current)), gap: true };
   }
-  async function exportOpen(options, progress) {
+  async function exportOpen(options, progress, assertActive = () => {}) {
+    assertActive();
     const root = document.querySelector('.openedChat');
     if (!root) throw new Error('Открытый чат не найден. Выберите переписку в MAX.');
     const title = openedTitle();
@@ -187,24 +208,30 @@
       if (scroller || cancelled) break;
       progress({ title, count: document.querySelectorAll(MESSAGE_ROWS).length, stage: 'waiting' });
       await wait(150);
+      assertActive();
     }
     if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
+    assertActive();
     let messages = snapshot();
     const captureCache = new Map();
     await captureVisibleUrls(messages, options, captureCache, progress, title);
+    assertActive();
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps };
     const started = Date.now();
     for (let round = 0; round < 5000; round++) {
       if (cancelled) { reason = 'cancelled'; break; }
+      assertActive();
       if (messages.length >= options.limit) { reason = 'message_limit'; break; }
       if (Date.now() - started > 10 * 60 * 1000) { reason = 'timeout'; break; }
       const previousTop = scroller.scrollTop;
       scroller.scrollTop = Math.max(0, previousTop - Math.max(300, scroller.clientHeight * 0.75));
       await wait(450);
+      assertActive();
       const before = messages.length;
       const current = snapshot();
       await captureVisibleUrls(current, options, captureCache, progress, title);
+      assertActive();
       const merged = mergeOlder(messages, current);
       messages = merged.items;
       if (merged.gap) gaps++;
@@ -215,9 +242,10 @@
     }
     if (!reachedTop && reason === 'top') reason = 'scroll_limit';
     if (messages.length > options.limit) messages = messages.slice(-options.limit);
+    assertActive();
     return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps };
   }
-  async function openChat(info) {
+  async function openChat(info, progress = () => {}) {
     const list = document.querySelector('.aside');
     if (!list) throw new Error('Список чатов исчез из MAX.');
     const scroller = scrollParent(visibleRows()[0] || list) || list;
@@ -227,21 +255,19 @@
       if (cancelled) throw new Error('Остановлено пользователем.');
       const row = visibleRows().find(row => rowKey(row) === info.key);
       if (row) {
-        const previousRoot = document.querySelector('.openedChat');
-        const previousLocation = location.href;
-        const previousTitle = openedTitle();
-        row.click();
-        let switched = false;
-        for (let attempt = 0; attempt < 30; attempt++) {
+        const cell = row.querySelector('.cell');
+        if (!cell) throw new Error(`Строка чата «${info.title}» изменилась в MAX. Обновите список.`);
+        progress({ title: info.title, count: 0, stage: 'opening' });
+        cell.click();
+        const assertActive = activeChatGuard(info, row);
+        for (let attempt = 0; attempt < 50; attempt++) {
+          if (cancelled) throw new Error('Остановлено пользователем.');
           await wait(200);
           const root = document.querySelector('.openedChat');
-          const routeChanged = location.href !== previousLocation;
-          const titleChanged = openedTitle() !== previousTitle;
-          const rootChanged = root && root !== previousRoot;
-          switched ||= routeChanged || titleChanged || rootChanged;
-          if (switched && root?.querySelector('.messageWrapper, .emptyHistory')) {
+          if (row.querySelector('.cell--selected') && comparableTitle(openedTitle()) === comparableTitle(info.title) && root?.querySelector('.messageWrapper, .emptyHistory')) {
             await wait(300);
-            if (document.querySelector('.openedChat') === root && root.querySelector('.messageWrapper, .emptyHistory')) return;
+            assertActive();
+            return assertActive;
           }
         }
         throw new Error(`Чат «${info.title}» не открылся.`);
@@ -263,8 +289,9 @@
         if (message.type === 'discover') port.postMessage({ type: 'result', id: message.id, value: await discover() });
         if (message.type === 'current') port.postMessage({ type: 'result', id: message.id, value: { title: openedTitle() } });
         if (message.type === 'export') {
-          if (message.chat) await openChat(message.chat);
-          const result = await exportOpen(message.options, value => port.postMessage({ type: 'progress', id: message.id, value }));
+          const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
+          const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
+          const result = await exportOpen(message.options, progress, assertActive);
           const messages = result.messages;
           for (let index = 0; index < messages.length; index += 250) {
             port.postMessage({ type: 'chunk', id: message.id, messages: messages.slice(index, index + 250) });
