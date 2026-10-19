@@ -148,3 +148,21 @@ test('switching chats waits for the new conversation instead of accepting old me
   selected = false;
   assert.throws(() => guard(), /больше не открыт/);
 });
+
+test('manual chat switch interrupts history reading without returning another chat', async () => {
+  const scroller = { overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, scrollTop: 900, parentElement: null };
+  const row = messageRow();
+  row.parentElement = scroller;
+  const root = { querySelector: () => row };
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? root : null,
+    querySelectorAll: () => [row]
+  };
+  const content = loadContent(document);
+  let active = true;
+  setTimeout(() => { active = false; }, 600);
+  await assert.rejects(content.exportOpen({ limit: 100 }, () => {}, () => {
+    if (!active) throw new Error('Другой чат открыт');
+  }), /Другой чат открыт/);
+});
