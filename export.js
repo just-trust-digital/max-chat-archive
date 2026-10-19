@@ -132,7 +132,7 @@
       let timer;
       try {
         const url = new URL(attachment.url);
-        if (url.protocol !== 'https:' || !(url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru'))) throw new Error('Адрес вне доменов MAX');
+        if (url.protocol !== 'https:' || !(url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || url.hostname === 'i.oneme.ru')) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= 250 * 1024 * 1024) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
         timer = setTimeout(() => controller.abort(), 30000);

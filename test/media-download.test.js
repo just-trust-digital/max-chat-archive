@@ -45,5 +45,15 @@ test('file outside MAX domains is recorded as skipped without fetching', async (
   const report = { skippedMedia: [] };
   await exporter.downloadMedia({ add() {} }, { messages: [{ attachments: [attachment] }] }, '001-chat', report, 0, () => {});
   assert.equal(fetched, false);
-  assert.match(report.skippedMedia[0].reason, /вне доменов MAX/);
+  assert.match(report.skippedMedia[0].reason, /вне разрешённых доменов медиа/);
+});
+
+test('MAX image host from a user archive can be downloaded', async () => {
+  const exporter = loadExporter(async () => new Response(new Uint8Array([9, 8]), { headers: { 'content-type': 'image/jpeg' } }));
+  const attachment = { name: 'photo', url: 'https://i.oneme.ru/i?r=sample', downloadable: true, kind: 'img' };
+  const files = new Map();
+  const report = { skippedMedia: [] };
+  await exporter.downloadMedia({ add(name, bytes) { files.set(name, bytes); } }, { messages: [{ attachments: [attachment] }] }, '001-chat', report, 0, () => {});
+  assert.deepEqual([...files.keys()], ['001-chat/media/0001-photo.jpg']);
+  assert.equal(report.skippedMedia.length, 0);
 });

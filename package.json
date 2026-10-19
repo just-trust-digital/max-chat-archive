@@ -1,7 +1,7 @@
 {
   "name": "max-archive-extension",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local MAX web chat archive extension",
   "scripts": { "test": "node --test" },
   "license": "MIT"
