@@ -14,6 +14,8 @@ function loadContent(document, { instantWait = false } = {}) {
     location: { href: 'https://web.max.ru/' },
     URL,
     setTimeout,
+    Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
+    WheelEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     getComputedStyle: element => ({ overflowY: element.overflowY || 'visible' }),
     chrome: { runtime: { onConnect: { addListener() {} } } }
   };
@@ -180,6 +182,60 @@ test('a moving pane with only the initial 30 messages is not called complete', a
   assert.equal(result.messages.length, 30);
   assert.equal(result.complete, false);
   assert.equal(result.reason, 'history_not_expanded');
+});
+
+test('history loader receives an upward input notification at the top edge', async () => {
+  let top = 900, mounted = 30;
+  const events = [];
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) { top = Math.max(0, Math.min(900, value)); },
+    dispatchEvent(event) {
+      events.push(event.type);
+      if (event.type === 'wheel' && event.deltaY < 0 && top === 0) mounted = 60;
+      return true;
+    }
+  };
+  const rows = Array.from({ length: 60 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` }); row.parentElement = scroller; return row;
+  });
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => rows[60 - mounted] } : null,
+    querySelectorAll: () => rows.slice(60 - mounted)
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 60);
+  assert.ok(events.includes('scroll'));
+  assert.ok(events.includes('wheel'));
+  assert.ok(result.history.scrollAttempts > 0);
+  assert.equal(result.history.initialMessages, 30);
+  assert.equal(result.history.lastSteps.at(-1).collected, 60);
+});
+
+test('history reading reacquires a pane replaced during MAX rendering', async () => {
+  let mounted = 30, top = 900, rows;
+  const replacement = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) { top = Math.max(0, Math.min(900, value)); if (top < 900) mounted = 60; }
+  };
+  const original = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, scrollTop: 900, parentElement: null,
+    dispatchEvent() { for (const row of rows) row.parentElement = replacement; return true; }
+  };
+  rows = Array.from({ length: 60 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` }); row.parentElement = original; return row;
+  });
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => rows[60 - mounted] } : null,
+    querySelectorAll: () => rows.slice(60 - mounted)
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 60);
+  assert.equal(result.history.paneReplacements, 1);
 });
 
 test('switching chats waits for the new conversation instead of accepting old messages', async () => {

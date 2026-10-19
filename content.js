@@ -217,6 +217,18 @@
     }
     return { items: carryDates(prefix.concat(current)), gap: false };
   }
+  function historyScroller() {
+    const first = document.querySelector('.openedChat')?.querySelector('.messageWrapper');
+    return first && scrollParent(first);
+  }
+  function scrollHistoryUp(scroller) {
+    const distance = Math.max(300, scroller.clientHeight * 0.75);
+    // Preserve negative coordinates in reversed panes and notify MAX's loader
+    // even when the viewport has already reached its upper boundary.
+    scroller.scrollTop -= distance;
+    scroller.dispatchEvent?.(new Event('scroll', { bubbles: true }));
+    scroller.dispatchEvent?.(new WheelEvent('wheel', { deltaY: -distance, deltaMode: 0, bubbles: true, cancelable: true }));
+  }
   async function exportOpen(options, progress, assertActive = () => {}) {
     assertActive();
     const root = document.querySelector('.openedChat');
@@ -224,8 +236,7 @@
     const title = openedTitle();
     let scroller = null;
     for (let attempt = 0; attempt < 20; attempt++) {
-      const first = root.querySelector(MESSAGE_ROWS.replace('.openedChat ', ''));
-      scroller = first && scrollParent(first);
+      scroller = historyScroller();
       if (scroller || cancelled) break;
       progress({ title, count: document.querySelectorAll(MESSAGE_ROWS).length, stage: 'waiting' });
       await wait(150);
@@ -235,23 +246,32 @@
     assertActive();
     let messages = snapshot();
     const initialCount = messages.length;
+    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, lastSteps: [] };
     const captureCache = new Map();
     await captureVisibleUrls(messages, options, captureCache, progress, title);
     assertActive();
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let movedTowardHistory = false;
-    if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps };
+    if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps, history };
     const started = Date.now();
     for (let round = 0; round < 5000; round++) {
       if (cancelled) { reason = 'cancelled'; break; }
       assertActive();
       if (messages.length >= options.limit) { reason = 'message_limit'; break; }
       if (Date.now() - started > 10 * 60 * 1000) { reason = 'timeout'; break; }
+      const liveScroller = historyScroller();
+      if (!liveScroller) { reason = 'scroll_container_not_found'; break; }
+      let replaced = liveScroller !== scroller;
+      if (replaced) history.paneReplacements++;
+      scroller = liveScroller;
       const previousTop = scroller.scrollTop;
-      // Reversed history panes use negative scrollTop for older messages.
-      scroller.scrollTop = previousTop - Math.max(300, scroller.clientHeight * 0.75);
+      const connected = scroller.isConnected !== false;
+      scrollHistoryUp(scroller);
       await wait(450);
       assertActive();
+      const afterScroller = historyScroller();
+      if (!afterScroller) { reason = 'scroll_container_not_found'; break; }
+      if (afterScroller !== scroller) { history.paneReplacements++; replaced = true; scroller = afterScroller; }
       const moved = Math.abs(scroller.scrollTop - previousTop) >= 2;
       if (moved) movedTowardHistory = true;
       const before = messages.length;
@@ -261,8 +281,11 @@
       const merged = mergeOlder(messages, current);
       messages = merged.items;
       if (merged.gap) gaps++;
+      history.scrollAttempts++;
+      history.lastSteps.push({ beforeTop: previousTop, afterTop: scroller.scrollTop, height: scroller.scrollHeight, viewport: scroller.clientHeight, mounted: current.length, collected: messages.length, replaced, connected });
+      if (history.lastSteps.length > 20) history.lastSteps.shift();
       progress({ title, count: messages.length, round });
-      if (messages.length === before && !moved) stable++;
+      if (messages.length === before && !moved && !replaced) stable++;
       else stable = 0;
       if (stable >= 12) {
         if (movedTowardHistory && messages.length > initialCount) reachedTop = true;
@@ -273,7 +296,7 @@
     if (!reachedTop && reason === 'top') reason = 'scroll_limit';
     if (messages.length > options.limit) messages = messages.slice(-options.limit);
     assertActive();
-    return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps };
+    return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps, history };
   }
   async function openChat(info, progress = () => {}) {
     const list = document.querySelector('.aside');

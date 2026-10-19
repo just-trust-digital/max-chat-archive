@@ -189,7 +189,7 @@
       });
       await chrome.storage.local.set({ settings });
       const combinedZip = perChat ? null : new ZipArchive();
-      const report = { exportedAt: new Date().toISOString(), source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
+      const report = { exportedAt: new Date().toISOString(), extensionVersion: chrome.runtime.getManifest().version, source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
       for (let index = 0; index < selected.length; index++) {
         if (stopped) break;
         const info = selected[index];
@@ -219,7 +219,7 @@
           }
           stage(`Чат ${index + 1} из ${selected.length}: создание ZIP…`);
           ArchiveFormat.add(zip, path, result, settings.format);
-          const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates };
+          const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, history: result.history };
           if (perChat) {
             zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), mediaBytes: chatMediaBytes }, null, 2));
             await saveZip(zip, `max-archive-${path}.zip`);
