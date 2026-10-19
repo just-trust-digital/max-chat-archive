@@ -65,8 +65,17 @@
   }
   function updateSelection() {
     const count = selection().length;
-    $('selection-count').textContent = scope() === 'current' ? 'Открытый чат' : `${count} чатов`;
-    list.querySelectorAll('input').forEach(input => { input.disabled = scope() !== 'selected' || running; });
+    const selectedScope = scope() === 'selected';
+    $('selection-count').textContent = scope() === 'current' ? 'Открытый чат' : selectedScope ? `${count} из ${chats.length} чатов` : `${count} чатов`;
+    $('bulk-actions').hidden = !selectedScope;
+    $('select-all').disabled = running || !selectedScope || !chats.length;
+    $('select-none').disabled = running || !selectedScope || !chats.length;
+    list.querySelectorAll('input').forEach(input => { input.disabled = !selectedScope || running; });
+  }
+  function setChatSelection(checked) {
+    if (running || scope() !== 'selected') return;
+    list.querySelectorAll('input').forEach(input => { input.checked = checked; });
+    updateSelection();
   }
   function renderChats() {
     list.replaceChildren();
@@ -249,6 +258,8 @@
   }
   document.querySelectorAll('input[name="scope"]').forEach(input => input.addEventListener('change', updateSelection));
   $('refresh').addEventListener('click', refresh);
+  $('select-all').addEventListener('click', () => setChatSelection(true));
+  $('select-none').addEventListener('click', () => setChatSelection(false));
   start.addEventListener('click', run);
   cancel.addEventListener('click', () => { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); });
   init();
