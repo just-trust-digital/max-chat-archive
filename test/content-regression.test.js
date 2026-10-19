@@ -89,3 +89,23 @@ test('file button is captured while emoji image is ignored', () => {
   assert.equal(attachments.length, 1);
   assert.equal(attachments[0].name, 'документ.pdf');
 });
+
+test('export waits for a scrollable history before treating 30 visible messages as the archive', async () => {
+  const scroller = { overflowY: 'auto', scrollHeight: 90, clientHeight: 90, scrollTop: 0, parentElement: null };
+  const rows = Array.from({ length: 100 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` });
+    row.parentElement = scroller;
+    return row;
+  });
+  let mounted = 30;
+  const root = { querySelector: () => rows[0] };
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? root : null,
+    querySelectorAll: () => rows.slice(0, mounted)
+  };
+  const content = loadContent(document);
+  setTimeout(() => { mounted = 100; scroller.scrollHeight = 1000; }, 50);
+  const result = await content.exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 100);
+});

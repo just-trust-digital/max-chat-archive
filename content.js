@@ -130,8 +130,14 @@
     const root = document.querySelector('.openedChat');
     if (!root) throw new Error('Открытый чат не найден. Выберите переписку в MAX.');
     const title = openedTitle();
-    const first = root.querySelector(MESSAGE_ROWS.replace('.openedChat ', ''));
-    const scroller = first && scrollParent(first);
+    let scroller = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const first = root.querySelector(MESSAGE_ROWS.replace('.openedChat ', ''));
+      scroller = first && scrollParent(first);
+      if (scroller || cancelled) break;
+      progress({ title, count: document.querySelectorAll(MESSAGE_ROWS).length, stage: 'waiting' });
+      await wait(150);
+    }
     if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
     let messages = snapshot();
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
