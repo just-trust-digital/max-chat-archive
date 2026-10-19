@@ -52,19 +52,25 @@
   function openedTitle() {
     const root = document.querySelector('.openedChat');
     if (!root) return null;
-    const raw = root.querySelector('.header .title, .header [class*="title"], header [class*="title"]')?.textContent?.trim() || document.title.replace(/\s*[|—-]\s*MAX.*$/i, '').trim() || 'Открытый чат';
+    const title = root.querySelector('.header .title') || root.querySelector('header .title') || root.querySelector('.header [class*="title"]:not([class*="subtitle"]), header [class*="title"]:not([class*="subtitle"])');
+    const raw = title?.textContent?.trim() || document.title.replace(/\s*[|—-]\s*MAX.*$/i, '').trim() || 'Открытый чат';
     return raw.replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').trim();
   }
   function comparableTitle(title) {
     return (title || '').replace(/\s+\d+\s+из\s+\d+\s+в\s+сети\s*$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
   }
+  function selectedChatMatches(info, originalRow) {
+    const rows = [...document.querySelectorAll(CHAT_ROWS)];
+    // MAX unmounts the sidebar in its compact chat view.
+    if (!rows.length) return true;
+    const selected = rows.find(row => row.querySelector('.cell--selected'));
+    return selected === originalRow || !!selected && comparableTitle(titleOf(selected)) === comparableTitle(info.title);
+  }
   function activeChatGuard(info, originalRow) {
     const route = location.pathname;
     const expectedTitle = comparableTitle(info.title);
     return () => {
-      const selected = [...document.querySelectorAll(CHAT_ROWS)].find(row => row.querySelector('.cell--selected'));
-      const selectedMatches = selected === originalRow || selected && comparableTitle(titleOf(selected)) === expectedTitle;
-      if (!selectedMatches || comparableTitle(openedTitle()) !== expectedTitle || location.pathname !== route) {
+      if (!selectedChatMatches(info, originalRow) || comparableTitle(openedTitle()) !== expectedTitle || location.pathname !== route) {
         throw new Error(`Выбранный чат «${info.title}» больше не открыт в MAX. Экспорт остановлен без сохранения чужой переписки.`);
       }
     };
@@ -287,7 +293,7 @@
           if (cancelled) throw new Error('Остановлено пользователем.');
           await wait(200);
           const root = document.querySelector('.openedChat');
-          if (row.querySelector('.cell--selected') && comparableTitle(openedTitle()) === comparableTitle(info.title) && root?.querySelector('.messageWrapper, .emptyHistory')) {
+          if (selectedChatMatches(info, row) && comparableTitle(openedTitle()) === comparableTitle(info.title) && root?.querySelector('.messageWrapper, .emptyHistory')) {
             await wait(300);
             const assertActive = activeChatGuard(info, row);
             assertActive();

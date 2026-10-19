@@ -269,6 +269,39 @@ test('chat archive title excludes changing online member count', () => {
   assert.equal(content.openedTitle(), '2 "А" класс');
 });
 
+test('header title wins over an earlier subtitle container in document order', () => {
+  const root = { querySelector: selector => ({ textContent: selector === '.header .title' ? '2 "А" класс ' : '2 "А" класс 1 of 22 online' }) };
+  const content = loadContent({ querySelector: () => root });
+  assert.equal(content.openedTitle(), '2 "А" класс');
+});
+
+test('selected chat opens when MAX unmounts the sidebar after navigation', async () => {
+  let opened = false;
+  let title = '2 "А" класс';
+  const cell = { click() { opened = true; } };
+  const row = {
+    innerText: title, getClientRects: () => [1], parentElement: null,
+    querySelector(selector) {
+      if (selector === 'a[href]') return { getAttribute: () => '/c/class' };
+      if (selector === '.cell') return cell;
+      if (selector === '.cell--selected') return null;
+      return { textContent: title };
+    }
+  };
+  const root = { querySelector: selector => selector.includes('messageWrapper') ? {} : { textContent: title } };
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.aside' ? { scrollTop: 0, clientHeight: 500 } : selector === '.openedChat' && opened ? root : null,
+    querySelectorAll: () => opened ? [] : [row]
+  };
+  const content = loadContent(document, { instantWait: true });
+  const guard = await content.openChat({ key: '/c/class', title });
+  assert.equal(opened, true);
+  assert.doesNotThrow(guard);
+  title = 'Другой чат';
+  assert.throws(guard, /больше не открыт/);
+});
+
 test('repeated MAX window with one changed message does not triple the archive', () => {
   const content = loadContent({});
   const message = index => ({ time: `12:${String(index).padStart(2, '0')}`, direction: 'in', text: `Сообщение ${index}`, attachments: [], dateLabel: '' });
