@@ -56,7 +56,13 @@
   }
   function attachmentsOf(row) {
     const items = [];
-    for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src]')) {
+    for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src],button[aria-label="Скачать"]')) {
+      if (element.closest?.('[class*="emoji"], [class*="Emoji"], [class*="reaction"], [class*="avatar"]')) continue;
+      if (element.tagName.toLowerCase() === 'button') {
+        const name = element.querySelector?.('.title, [class*="title"]')?.textContent?.trim() || element.textContent?.trim().slice(0, 100) || 'Вложение';
+        items.push({ kind: 'file', url: null, downloadable: false, source: 'download-button', name });
+        continue;
+      }
       const raw = element.getAttribute('href') || element.getAttribute('src');
       if (!raw || raw.startsWith('data:') || raw.startsWith('blob:')) continue;
       let url;
@@ -65,14 +71,22 @@
       const kind = tag === 'a' ? 'file-or-link' : tag;
       items.push({ kind, url, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
     }
-    return [...new Map(items.map(item => [item.url, item])).values()];
+    return [...new Map(items.map((item, index) => [item.url || `button:${index}:${item.name}`, item])).values()];
   }
   function extract(row, dateLabel) {
     const message = row.querySelector('.message') || row;
     const textNode = message.querySelector('.bubbleContent') || message;
-    const body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
+    const textParts = [...(textNode.querySelectorAll?.('.text') || [])].map(element => element.innerText?.trim() || element.textContent?.trim() || '').filter(Boolean);
+    let body = textParts.join('\n');
+    if (!body && textNode.cloneNode) {
+      const copy = textNode.cloneNode(true);
+      copy.querySelectorAll('.header, .meta, time, .reactions, [class*="emoji"], [class*="media"], button[aria-label="Скачать"]').forEach(element => element.remove());
+      body = copy.innerText?.trim() || copy.textContent?.trim() || '';
+    }
+    if (!body) body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
     const time = message.querySelector('time')?.getAttribute('datetime') || message.querySelector('time, [class*="meta"]')?.textContent?.trim() || '';
-    const author = row.querySelector('[class*="sender"], [class*="author"]')?.textContent?.trim() || '';
+    const authorElement = row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
+    const author = authorElement?.innerText?.trim() || authorElement?.textContent?.trim() || '';
     const reactions = [...row.querySelectorAll('[class*="reactions"] [class*="reaction"]')].map(el => el.textContent.trim()).filter(Boolean);
     const attachments = attachmentsOf(row);
     return { dateLabel, time, author, direction: row.classList.contains('messageWrapper--isOut') ? 'out' : 'in', text: body, reactions, attachments };
@@ -81,14 +95,22 @@
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     let dateLabel = '';
     return rows.map(row => {
-      const date = row.closest('[role="listitem"]')?.previousElementSibling;
-      const candidate = date?.querySelector?.('.dateSeparator .date, .dateSeparator');
+      const item = row.closest('[role="listitem"]');
+      const candidate = item?.querySelector?.('.dateSeparator .date, .dateSeparator') || item?.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator') || row.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator');
       if (candidate) dateLabel = candidate.textContent?.trim() || dateLabel;
       return extract(row, dateLabel);
     });
   }
   function signature(item) {
-    return JSON.stringify([item.dateLabel, item.time, item.author, item.direction, item.text, item.attachments.map(a => a.url)]);
+    return JSON.stringify([item.time, item.author, item.direction, item.text, item.attachments.map(a => a.url || a.name)]);
+  }
+  function carryDates(items) {
+    let date = '';
+    for (const item of items) {
+      if (item.dateLabel) date = item.dateLabel;
+      else item.dateLabel = date;
+    }
+    return items;
   }
   function mergeOlder(current, older) {
     if (!current.length) return { items: older, gap: false };
@@ -97,9 +119,12 @@
     for (let overlap = Math.min(a.length, b.length); overlap > 0; overlap--) {
       let matches = true;
       for (let i = 0; i < overlap; i++) if (a[a.length - overlap + i] !== b[i]) { matches = false; break; }
-      if (matches) return { items: older.slice(0, -overlap).concat(current), gap: false };
+      if (matches) {
+        for (let i = 0; i < overlap; i++) if (!current[i].dateLabel && older[older.length - overlap + i].dateLabel) current[i].dateLabel = older[older.length - overlap + i].dateLabel;
+        return { items: carryDates(older.slice(0, -overlap).concat(current)), gap: false };
+      }
     }
-    return { items: older.concat(current), gap: true };
+    return { items: carryDates(older.concat(current)), gap: true };
   }
   async function exportOpen(options, progress) {
     const root = document.querySelector('.openedChat');

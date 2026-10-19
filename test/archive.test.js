@@ -51,3 +51,16 @@ test('date parser recognizes Russian MAX-style separators', () => {
   assert.equal(ArchiveFormat.dateOf({ dateLabel: '24.09.2026' }), '2026-09-24');
   assert.match(ArchiveFormat.dateOf({ dateLabel: '24 сентября' }), /^\d{4}-09-24$/);
 });
+
+test('archive formats include the normalized date and sender', async () => {
+  const messages = ArchiveFormat.filter([{
+    dateLabel: '18 октября 2026', time: '17:58', author: 'Екатерина Волкова',
+    direction: 'in', text: 'Добрый вечер', attachments: [], reactions: []
+  }], { from: '', to: '', media: true, links: true, reactions: true });
+  assert.equal(messages[0].date, '2026-10-18');
+  const zip = new ZipArchive();
+  ArchiveFormat.add(zip, 'chat', { title: 'Чат', messages }, 'html');
+  const archiveBytes = new Uint8Array(await zip.blob().arrayBuffer());
+  const content = new TextDecoder().decode(archiveBytes);
+  assert.ok(content.includes('Екатерина Волкова · 2026-10-18 17:58'));
+});
