@@ -57,3 +57,31 @@ test('MAX image host from a user archive can be downloaded', async () => {
   assert.deepEqual([...files.keys()], ['001-chat/media/0001-photo.jpg']);
   assert.equal(report.skippedMedia.length, 0);
 });
+
+test('MAX document and video hosts from a user archive can be downloaded', async () => {
+  const fetched = [];
+  const exporter = loadExporter(async url => {
+    fetched.push(url);
+    return new Response(new Uint8Array([1, 2]), { headers: { 'content-type': url.includes('okcdn.ru') ? 'video/mp4' : 'application/octet-stream' } });
+  });
+  const attachments = [
+    { name: 'document.docx', url: 'https://fd.oneme.ru/getfile?rq=sample', downloadable: true, kind: 'file' },
+    { name: '', url: 'https://maxvd505.okcdn.ru/?id=sample', downloadable: true, kind: 'source' }
+  ];
+  const files = new Map();
+  const report = { skippedMedia: [] };
+  await exporter.downloadMedia({ add(name, bytes) { files.set(name, bytes); } }, { messages: [{ attachments }] }, '001-chat', report, 0, () => {});
+  assert.equal(fetched.length, 2);
+  assert.deepEqual([...files.keys()], ['001-chat/media/0001-document.docx', '001-chat/media/0002-source.mp4']);
+  assert.equal(report.skippedMedia.length, 0);
+});
+
+test('other okcdn hosts stay outside the media allowlist', async () => {
+  let fetched = false;
+  const exporter = loadExporter(async () => { fetched = true; throw Error('unexpected fetch'); });
+  const attachment = { name: 'other', url: 'https://other.okcdn.ru/file', downloadable: true };
+  const report = { skippedMedia: [] };
+  await exporter.downloadMedia({ add() {} }, { messages: [{ attachments: [attachment] }] }, '001-chat', report, 0, () => {});
+  assert.equal(fetched, false);
+  assert.equal(report.skippedMedia.length, 1);
+});
