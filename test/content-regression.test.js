@@ -4,13 +4,15 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadContent(document, { instantWait = false } = {}) {
+function loadContent(document, { instantWait = false, capture = null } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
   const instrumented = (instantWait ? source.replace('const wait = ms => new Promise(resolve => setTimeout(resolve, ms));', 'const wait = () => Promise.resolve();') : source)
-    .replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
+    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
+    window: capture ? {} : undefined,
+    captureOverride: capture,
     location: { href: 'https://web.max.ru/' },
     URL,
     setTimeout,
@@ -236,6 +238,44 @@ test('history reading reacquires a pane replaced during MAX rendering', async ()
   const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
   assert.equal(result.messages.length, 60);
   assert.equal(result.history.paneReplacements, 1);
+});
+
+test('file resolution starts after history loading and revisits virtualized messages', async () => {
+  let top = 900, olderLoaded = false;
+  const phases = [], captures = [];
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) { top = Math.max(0, Math.min(900, value)); if (top === 0) olderLoaded = true; }
+  };
+  const rows = Array.from({ length: 60 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` }); row.parentElement = scroller;
+    const button = { tagName: 'BUTTON', textContent: `file-${index}.pdf`, querySelector: () => ({ textContent: `file-${index}.pdf` }), getAttribute: () => 'Скачать', index };
+    if (index === 0 || index === 59) row.querySelectorAll = selector => selector.includes('button') ? [button] : [];
+    return row;
+  });
+  // The oldest window overlaps the newest one by five messages, then is unmounted on return to the bottom.
+  const visible = () => olderLoaded && top < 900 ? rows.slice(0, 35) : rows.slice(30);
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => visible()[0] } : null,
+    querySelectorAll: () => visible()
+  };
+  const content = loadContent(document, { instantWait: true, capture: async button => {
+    assert.ok(phases.includes('history-ready'), 'must finish loading before clicking a file');
+    captures.push(button.index);
+    return { url: `https://fd.oneme.ru/file-${button.index}.pdf`, name: `server-file-${button.index}.pdf` };
+  } });
+  const result = await content.exportOpen({ limit: 100, media: true, downloadMedia: true }, value => phases.push(value.stage));
+  assert.equal(result.messages.length, 60);
+  assert.deepEqual(captures.sort((a,b) => a-b), [0, 59]);
+  assert.equal(result.messages[0].attachments[0].url, 'https://fd.oneme.ru/file-0.pdf');
+  assert.equal(result.messages[59].attachments[0].url, 'https://fd.oneme.ru/file-59.pdf');
+  phases.length = 0; captures.length = 0;
+  const limited = await content.exportOpen({ limit: 40, media: true, downloadMedia: true }, value => phases.push(value.stage));
+  assert.equal(limited.messages.length, 40);
+  assert.equal(limited.reason, 'message_limit');
+  assert.deepEqual(captures, [59], 'do not resolve files outside the requested history');
 });
 
 test('switching chats waits for the new conversation instead of accepting old messages', async () => {

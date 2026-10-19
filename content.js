@@ -229,6 +229,54 @@
     scroller.dispatchEvent?.(new Event('scroll', { bubbles: true }));
     scroller.dispatchEvent?.(new WheelEvent('wheel', { deltaY: -distance, deltaMode: 0, bubbles: true, cancelable: true }));
   }
+  async function resolveHistoryAttachments(messages, options, progress, title, assertActive) {
+    const targets = new Map();
+    if (!options.media || !options.downloadMedia) return { neededMessages: 0, unresolvedMessages: 0, scrollAttempts: 0 };
+    for (const message of messages) {
+      if (!message.attachments.some(item => item.source === 'download-button')) continue;
+      const key = signature(message);
+      if (!targets.has(key)) targets.set(key, []);
+      targets.get(key).push(message);
+    }
+    const neededMessages = targets.size, cache = new Map();
+    let scrollAttempts = 0, stable = 0;
+    if (!targets.size || cancelled) return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
+    progress({ title, count: messages.length, stage: 'resolving', fileCount: 0 });
+    let scroller = historyScroller();
+    if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
+    const started = Date.now();
+    for (let round = 0; round < 5000 && Date.now() - started < 10 * 60 * 1000; round++) {
+      if (cancelled) break;
+      assertActive();
+      const visible = snapshot();
+      const keys = visible.map(signature);
+      // Keep row indexes aligned while resolving only files included by the history limit.
+      const wanted = visible.map((item, index) => targets.has(keys[index]) ? item : { ...item, attachments: [] });
+      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length }), title);
+      assertActive();
+      const before = targets.size;
+      for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
+        const item = wanted[itemIndex], key = keys[itemIndex], copies = targets.get(key);
+        if (!copies) continue;
+        for (const copy of copies) item.attachments.forEach((attachment, index) => {
+          if (attachment.source === 'download-button-url') Object.assign(copy.attachments[index], attachment);
+        });
+        targets.delete(key);
+      }
+      if (!targets.size || cancelled) break;
+      scroller = historyScroller();
+      if (!scroller) break;
+      const previousTop = scroller.scrollTop;
+      scrollHistoryUp(scroller);
+      await wait(450);
+      scrollAttempts++;
+      const live = historyScroller();
+      if (live === scroller && Math.abs(live.scrollTop - previousTop) < 2 && targets.size === before) stable++;
+      else stable = 0;
+      if (stable >= 12) break;
+    }
+    return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
+  }
   async function exportOpen(options, progress, assertActive = () => {}) {
     assertActive();
     const root = document.querySelector('.openedChat');
@@ -247,12 +295,14 @@
     let messages = snapshot();
     const initialCount = messages.length;
     const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, lastSteps: [] };
-    const captureCache = new Map();
-    await captureVisibleUrls(messages, options, captureCache, progress, title);
-    assertActive();
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let movedTowardHistory = false;
-    if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps, history };
+    if (!scroller) {
+      if (messages.length > options.limit) messages = messages.slice(-options.limit);
+      progress({ title, count: messages.length, stage: 'history-ready', reason: 'scroll_container_not_found' });
+      history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive);
+      return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps, history };
+    }
     const started = Date.now();
     for (let round = 0; round < 5000; round++) {
       if (cancelled) { reason = 'cancelled'; break; }
@@ -276,15 +326,13 @@
       if (moved) movedTowardHistory = true;
       const before = messages.length;
       const current = snapshot();
-      await captureVisibleUrls(current, options, captureCache, progress, title);
-      assertActive();
       const merged = mergeOlder(messages, current);
       messages = merged.items;
       if (merged.gap) gaps++;
       history.scrollAttempts++;
       history.lastSteps.push({ beforeTop: previousTop, afterTop: scroller.scrollTop, height: scroller.scrollHeight, viewport: scroller.clientHeight, mounted: current.length, collected: messages.length, replaced, connected });
       if (history.lastSteps.length > 20) history.lastSteps.shift();
-      progress({ title, count: messages.length, round });
+      progress({ title, count: messages.length, round, stage: 'history', limit: options.limit });
       if (messages.length === before && !moved && !replaced) stable++;
       else stable = 0;
       if (stable >= 12) {
@@ -295,6 +343,9 @@
     }
     if (!reachedTop && reason === 'top') reason = 'scroll_limit';
     if (messages.length > options.limit) messages = messages.slice(-options.limit);
+    assertActive();
+    progress({ title, count: messages.length, stage: 'history-ready', reason });
+    history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive);
     assertActive();
     return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps, history };
   }

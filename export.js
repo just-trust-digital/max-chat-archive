@@ -198,7 +198,7 @@
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
         try {
           const result = await call('export', { chat: info, options: settings }, value => {
-            const phase = value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Чтение истории';
+            const phase = value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
             stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${value.fileCount ? `, файлов ${value.fileCount}` : ''}`);
             rows[index].textContent = `${value.title} — ${phase.toLowerCase()}, ${value.count} сообщений`;
           });
