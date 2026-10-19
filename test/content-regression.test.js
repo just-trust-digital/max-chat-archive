@@ -6,7 +6,7 @@ const path = require('node:path');
 
 function loadContent(document) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard };})();');
+  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -189,4 +189,23 @@ test('rerendered selected chat row retains identity despite changed preview text
   assert.doesNotThrow(() => guard());
   selected = makeRow('Другой чат', 'новое сообщение');
   assert.throws(() => guard(), /больше не открыт/);
+});
+
+test('repeated MAX window with one changed message does not triple the archive', () => {
+  const content = loadContent({});
+  const message = index => ({ time: `12:${String(index).padStart(2, '0')}`, direction: 'in', text: `Сообщение ${index}`, attachments: [], dateLabel: '' });
+  const current = Array.from({ length: 30 }, (_, index) => message(index));
+  const repeated = current.map(item => ({ ...item }));
+  repeated[28].text += '!';
+  const same = content.mergeOlder(current, repeated);
+  assert.equal(same.items.length, 30);
+  assert.equal(same.gap, false);
+  const earlier = [message(-2), message(-1), ...repeated];
+  const extended = content.mergeOlder(current, earlier);
+  assert.equal(extended.items.length, 32);
+  assert.equal(extended.gap, false);
+  const unrelated = Array.from({ length: 30 }, (_, index) => message(index + 50));
+  const missingOverlap = content.mergeOlder(current, unrelated);
+  assert.equal(missingOverlap.items.length, 30);
+  assert.equal(missingOverlap.gap, true);
 });

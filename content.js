@@ -128,7 +128,7 @@
     });
   }
   function signature(item) {
-    return JSON.stringify([item.time, item.author, item.direction, item.text, item.attachments.map(a => [a.kind, a.source?.startsWith('download-button') ? 'download-button' : a.name])]);
+    return JSON.stringify([item.time, item.direction, item.text?.replace(/\s+/g, ' ').trim(), item.attachments.map(a => [a.kind, a.source?.startsWith('download-button') ? 'download-button' : a.name])]);
   }
   function captureButton(button) {
     return new Promise(resolve => {
@@ -192,15 +192,23 @@
     if (!current.length) return { items: older, gap: false };
     if (!older.length) return { items: current, gap: false };
     const a = older.map(signature), b = current.map(signature);
-    for (let overlap = Math.min(a.length, b.length); overlap > 0; overlap--) {
-      let matches = true;
-      for (let i = 0; i < overlap; i++) if (a[a.length - overlap + i] !== b[i]) { matches = false; break; }
-      if (matches) {
-        for (let i = 0; i < overlap; i++) if (!current[i].dateLabel && older[older.length - overlap + i].dateLabel) current[i].dateLabel = older[older.length - overlap + i].dateLabel;
-        return { items: carryDates(older.slice(0, -overlap).concat(current)), gap: false };
-      }
+    let best = null;
+    for (let offset = 0; offset > -older.length; offset--) {
+      const first = -offset;
+      const overlap = Math.min(older.length - first, current.length);
+      if (overlap < Math.min(3, older.length, current.length)) continue;
+      let matches = 0;
+      for (let index = 0; index < overlap; index++) if (a[first + index] === b[index]) matches++;
+      if (matches / overlap < 0.7 || matches < Math.min(3, overlap)) continue;
+      if (!best || matches > best.matches || matches === best.matches && overlap > best.overlap) best = { offset, overlap, matches };
     }
-    return { items: carryDates(older.concat(current)), gap: true };
+    if (!best) return { items: current, gap: true };
+    const prefix = older.slice(0, -best.offset);
+    for (let index = -best.offset; index < older.length; index++) {
+      const existing = current[index + best.offset];
+      if (existing && !existing.dateLabel && older[index].dateLabel) existing.dateLabel = older[index].dateLabel;
+    }
+    return { items: carryDates(prefix.concat(current)), gap: false };
   }
   async function exportOpen(options, progress, assertActive = () => {}) {
     assertActive();
