@@ -228,10 +228,12 @@
     if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
     assertActive();
     let messages = snapshot();
+    const initialCount = messages.length;
     const captureCache = new Map();
     await captureVisibleUrls(messages, options, captureCache, progress, title);
     assertActive();
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
+    let movedTowardHistory = false;
     if (!scroller) return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps };
     const started = Date.now();
     for (let round = 0; round < 5000; round++) {
@@ -240,9 +242,12 @@
       if (messages.length >= options.limit) { reason = 'message_limit'; break; }
       if (Date.now() - started > 10 * 60 * 1000) { reason = 'timeout'; break; }
       const previousTop = scroller.scrollTop;
-      scroller.scrollTop = Math.max(0, previousTop - Math.max(300, scroller.clientHeight * 0.75));
+      // Reversed history panes use negative scrollTop for older messages.
+      scroller.scrollTop = previousTop - Math.max(300, scroller.clientHeight * 0.75);
       await wait(450);
       assertActive();
+      const moved = Math.abs(scroller.scrollTop - previousTop) >= 2;
+      if (moved) movedTowardHistory = true;
       const before = messages.length;
       const current = snapshot();
       await captureVisibleUrls(current, options, captureCache, progress, title);
@@ -251,9 +256,13 @@
       messages = merged.items;
       if (merged.gap) gaps++;
       progress({ title, count: messages.length, round });
-      if (messages.length === before && Math.abs(scroller.scrollTop - previousTop) < 2 && scroller.scrollTop < 2) stable++;
+      if (messages.length === before && !moved) stable++;
       else stable = 0;
-      if (stable >= 5) { reachedTop = true; break; }
+      if (stable >= 12) {
+        if (movedTowardHistory && messages.length > initialCount) reachedTop = true;
+        else reason = movedTowardHistory ? 'history_not_expanded' : 'scroll_stalled';
+        break;
+      }
     }
     if (!reachedTop && reason === 'top') reason = 'scroll_limit';
     if (messages.length > options.limit) messages = messages.slice(-options.limit);

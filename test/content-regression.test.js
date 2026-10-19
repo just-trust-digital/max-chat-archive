@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadContent(document) {
+function loadContent(document, { instantWait = false } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = source.replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
+  const instrumented = (instantWait ? source.replace('const wait = ms => new Promise(resolve => setTimeout(resolve, ms));', 'const wait = () => Promise.resolve();') : source)
+    .replace(/\}\)\(\);\s*$/, 'globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -108,6 +109,77 @@ test('export waits for a scrollable history before treating 30 visible messages 
   setTimeout(() => { mounted = 100; scroller.scrollHeight = 1000; }, 50);
   const result = await content.exportOpen({ limit: 100 }, () => {});
   assert.equal(result.messages.length, 100);
+});
+
+test('reversed history scrolls below zero to load messages older than the first 30', async () => {
+  let top = 0;
+  let mounted = 30;
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) {
+      top = Math.max(-900, Math.min(0, value));
+      if (top < 0) mounted = 60;
+    }
+  };
+  const rows = Array.from({ length: 60 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` });
+    row.parentElement = scroller;
+    return row;
+  });
+  const root = { querySelector: () => rows[60 - mounted] };
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? root : null,
+    querySelectorAll: () => rows.slice(60 - mounted)
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 60);
+  assert.ok(top < 0, 'history pane must move into negative scrollTop');
+});
+
+test('unmoving history is reported as partial instead of complete', async () => {
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return 0; }, set scrollTop(_value) {}
+  };
+  const rows = Array.from({ length: 30 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` });
+    row.parentElement = scroller;
+    return row;
+  });
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => rows[0] } : null,
+    querySelectorAll: () => rows
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 30);
+  assert.equal(result.complete, false);
+  assert.equal(result.reason, 'scroll_stalled');
+});
+
+test('a moving pane with only the initial 30 messages is not called complete', async () => {
+  let top = 900;
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) { top = Math.max(0, Math.min(900, value)); }
+  };
+  const rows = Array.from({ length: 30 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` });
+    row.parentElement = scroller;
+    return row;
+  });
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => rows[0] } : null,
+    querySelectorAll: () => rows
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 30);
+  assert.equal(result.complete, false);
+  assert.equal(result.reason, 'history_not_expanded');
 });
 
 test('switching chats waits for the new conversation instead of accepting old messages', async () => {
