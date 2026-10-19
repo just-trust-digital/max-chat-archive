@@ -9,6 +9,11 @@
   for (let i = 0; i < 10; i++) {
     const row = document.createElement('div'); row.className = 'wrapper--withActions';
     row.innerHTML = `<div class="cell"><h3 class="title">Чат ${i}</h3></div>`;
+    row.querySelector('.cell').addEventListener('click', () => {
+      document.querySelectorAll('.aside .cell--selected').forEach(cell => cell.classList.remove('cell--selected'));
+      row.querySelector('.cell').classList.add('cell--selected');
+      document.querySelector('.openedChat .header .title').textContent = `Чат ${i}`;
+    });
     document.getElementById('aside').append(row);
   }
   for (let i = 0; i < 20; i++) {
