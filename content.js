@@ -2,7 +2,7 @@
   const CHAT_ROWS = '.aside .wrapper--withActions:has(.cell .title)';
   const MESSAGE_ROWS = '.openedChat .messageWrapper';
   const PHOTO_TILES = '[aria-label="Прикрепленные фото"] button.tile';
-  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const wait = ms => chrome.runtime.sendMessage ? chrome.runtime.sendMessage({type: 'max-archive-wait', ms}).then(result => { if (!result?.ok) throw new Error('Timer unavailable'); }).catch(() => new Promise(resolve => setTimeout(resolve, ms))) : new Promise(resolve => setTimeout(resolve, ms));
   let cancelled = false;
   const captureCancellations = new Set();
 
@@ -304,13 +304,17 @@
     const first = document.querySelector('.openedChat')?.querySelector('.messageWrapper');
     return first && scrollParent(first);
   }
+  function historyLoading() {
+    const root = document.querySelector('.openedChat');
+    return [...(root?.querySelectorAll?.('.loader, [role="progressbar"]') || [])].some(element => !element.closest?.('.messageWrapper, dialog') && element.getClientRects?.().length && getComputedStyle(element).display !== 'none');
+  }
   function scrollHistoryUp(scroller) {
     const distance = Math.max(300, scroller.clientHeight * 0.75);
-    // Preserve negative coordinates in reversed panes and notify MAX's loader
-    // even when the viewport has already reached its upper boundary.
-    scroller.scrollTop -= distance;
+    // Cross MAX's loading edge immediately, like Home, rather than spending
+    // dozens of timer ticks traversing already mounted messages.
+    if (scroller.scrollTop > 0) scroller.scrollTop = 0;
+    else scroller.scrollTop -= distance; // Reversed panes can use negative coordinates.
     scroller.dispatchEvent?.(new Event('scroll', { bubbles: true }));
-    scroller.dispatchEvent?.(new WheelEvent('wheel', { deltaY: -distance, deltaMode: 0, bubbles: true, cancelable: true }));
   }
   async function resolveHistoryAttachments(messages, options, progress, title, assertActive) {
     const targets = new Map();
@@ -378,7 +382,7 @@
     assertActive();
     let messages = snapshot();
     const initialCount = messages.length;
-    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, lastSteps: [] };
+    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, pacing: chrome.runtime.sendMessage ? 'extension-worker' : 'page-timer', lastSteps: [] };
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let movedTowardHistory = false;
     if (!scroller) {
@@ -401,6 +405,7 @@
       const previousTop = scroller.scrollTop;
       const connected = scroller.isConnected !== false;
       scrollHistoryUp(scroller);
+      const waitStarted = Date.now();
       await wait(450);
       assertActive();
       const afterScroller = historyScroller();
@@ -410,14 +415,15 @@
       if (moved) movedTowardHistory = true;
       const before = messages.length;
       const current = snapshot();
+      const loading = historyLoading();
       const merged = mergeOlder(messages, current);
       messages = merged.items;
       if (merged.gap) gaps++;
       history.scrollAttempts++;
-      history.lastSteps.push({ beforeTop: previousTop, afterTop: scroller.scrollTop, height: scroller.scrollHeight, viewport: scroller.clientHeight, mounted: current.length, collected: messages.length, replaced, connected });
+      history.lastSteps.push({ beforeTop: previousTop, afterTop: scroller.scrollTop, height: scroller.scrollHeight, viewport: scroller.clientHeight, mounted: current.length, collected: messages.length, replaced, connected, loading, waitMs: Date.now() - waitStarted, visibility: document.visibilityState || 'unknown' });
       if (history.lastSteps.length > 20) history.lastSteps.shift();
       progress({ title, count: messages.length, round, stage: 'history', limit: options.limit });
-      if (messages.length === before && !moved && !replaced) stable++;
+      if (messages.length === before && !moved && !replaced && !loading) stable++;
       else stable = 0;
       if (stable >= 4 && messages.length === initialCount && history.restarts === 0) {
         // A freshly opened chat can bind its history loader after the first
@@ -436,6 +442,7 @@
       }
     }
     if (!reachedTop && reason === 'top') reason = 'scroll_limit';
+    history.elapsedMs = Date.now() - started;
     if (messages.length > options.limit) messages = messages.slice(-options.limit);
     assertActive();
     progress({ title, count: messages.length, stage: 'history-ready', reason });

@@ -54,9 +54,7 @@
       pane.addEventListener('scroll', () => {
         if (previousTop > 1 && pane.scrollTop <= 1) { edgeEligible = ready; ready = true; }
         previousTop = pane.scrollTop;
-      });
-      pane.addEventListener('wheel', event => {
-        if (event.deltaY >= 0 || pane.scrollTop > 1 || loaded >= 90 || loading) return;
+        if (pane.scrollTop > 1 || loaded >= 90 || loading) return;
         if (delayedLoader && !edgeEligible) return;
         loading = true;
         setTimeout(() => { const oldHeight = pane.scrollHeight; renderMessages(pane, 90 - loaded - 30, 90 - loaded, true); loaded += 30; pane.scrollTop += pane.scrollHeight - oldHeight; loading = false; }, 80);

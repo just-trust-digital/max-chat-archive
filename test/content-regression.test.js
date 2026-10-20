@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function loadContent(document, { instantWait = false, capture = null } = {}) {
+function loadContent(document, { instantWait = false, capture = null, runtime = null, pageTimer = setTimeout } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
-  const instrumented = (instantWait ? source.replace('const wait = ms => new Promise(resolve => setTimeout(resolve, ms));', 'const wait = () => Promise.resolve();') : source)
+  const instrumented = (instantWait ? source.replace(/const wait = ms =>[^\n]+/, 'const wait = () => Promise.resolve();') : source)
     .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
@@ -15,12 +15,12 @@ function loadContent(document, { instantWait = false, capture = null } = {}) {
     captureOverride: capture,
     location: { href: 'https://web.max.ru/' },
     URL,
-    setTimeout,
+    setTimeout: pageTimer,
     setInterval, clearInterval,
     Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     WheelEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     getComputedStyle: element => ({ overflowY: element.overflowY || 'visible' }),
-    chrome: { runtime: { onConnect: { addListener() {} } } }
+    chrome: { runtime: runtime || { onConnect: { addListener() {} } } }
   };
   vm.runInNewContext(instrumented, context);
   return context.contentUnderTest;
@@ -226,6 +226,26 @@ test('reversed history scrolls below zero to load messages older than the first 
   assert.ok(top < 0, 'history pane must move into negative scrollTop');
 });
 
+test('history continues when page timers are suspended but extension worker is responsive', async () => {
+  let top = 900, mounted = 30, workerWaits = 0;
+  const scroller = { overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; }, set scrollTop(value) { top = Math.max(0, Math.min(900, value)); if (top === 0) mounted = 60; }
+  };
+  const rows = Array.from({length: 60}, (_, index) => { const row = messageRow({text: `Сообщение ${index}`}); row.parentElement = scroller; return row; });
+  const root = {querySelector: selector => selector === '.messageWrapper' ? rows[60-mounted] : {textContent: 'Чат'}};
+  const document = { title: 'MAX', querySelector: selector => selector === '.openedChat' ? root : null, querySelectorAll: () => rows.slice(60-mounted) };
+  let workerReceive;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'timer-worker.js'), 'utf8'), {
+    chrome: {runtime: {id: 'self', onMessage: {addListener(fn) {workerReceive = fn;}}}},
+    setTimeout(fn) {workerWaits++; queueMicrotask(fn);}
+  });
+  const runtime = { onConnect: {addListener() {}}, sendMessage: message => new Promise(resolve => workerReceive(message, {id: 'self'}, resolve)) };
+  const work = loadContent(document, {runtime, pageTimer: () => 0}).exportOpen({limit: 100}, () => {});
+  const result = await Promise.race([work, new Promise((_, reject) => setTimeout(() => reject(new Error('history blocked by suspended page timers')), 100))]);
+  assert.equal(result.messages.length, 60);
+  assert.ok(workerWaits > 0);
+});
+
 test('unmoving history is reported as partial instead of complete', async () => {
   const scroller = {
     overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
@@ -270,7 +290,7 @@ test('a moving pane with only the initial 30 messages is not called complete', a
   assert.equal(result.reason, 'history_not_expanded');
 });
 
-test('history loader receives an upward input notification at the top edge', async () => {
+test('history notifies the top edge without fabricating wheel input', async () => {
   let top = 900, mounted = 30;
   const events = [];
   const scroller = {
@@ -279,7 +299,7 @@ test('history loader receives an upward input notification at the top edge', asy
     set scrollTop(value) { top = Math.max(0, Math.min(900, value)); },
     dispatchEvent(event) {
       events.push(event.type);
-      if (event.type === 'wheel' && event.deltaY < 0 && top === 0) mounted = 60;
+      if (event.type === 'scroll' && top === 0) mounted = 60;
       return true;
     }
   };
@@ -294,10 +314,33 @@ test('history loader receives an upward input notification at the top edge', asy
   const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
   assert.equal(result.messages.length, 60);
   assert.ok(events.includes('scroll'));
-  assert.ok(events.includes('wheel'));
+  assert.ok(!events.includes('wheel'));
   assert.ok(result.history.scrollAttempts > 0);
   assert.equal(result.history.initialMessages, 30);
   assert.equal(result.history.lastSteps.at(-1).collected, 60);
+});
+
+test('initial MAX history crosses directly to the loading edge rather than creeping there', async () => {
+  let top = 600, mounted = 30;
+  const scroller = {overflowY: 'auto', scrollHeight: 1000, clientHeight: 400, parentElement: null,
+    get scrollTop() {return top;}, set scrollTop(value) {const previous = top;top=Math.max(0,Math.min(600,value));if(top===0 && previous>400) mounted=60;}
+  };
+  const rows=Array.from({length:60},(_, index)=>{const row=messageRow({text:`Сообщение ${index}`});row.parentElement=scroller;return row;});
+  const root={querySelector:selector=>selector==='.messageWrapper'?rows[60-mounted]:{textContent:'Чат'}};
+  const document={title:'MAX',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>rows.slice(60-mounted)};
+  const result=await loadContent(document,{instantWait:true}).exportOpen({limit:100},()=>{});
+  assert.equal(result.messages.length,60);
+});
+
+test('visible MAX loader prevents early termination before older messages arrive', async () => {
+  let top=600,mounted=30,checks=0;
+  const scroller={overflowY:'auto',scrollHeight:1000,clientHeight:400,parentElement:null,get scrollTop(){return top;},set scrollTop(value){top=Math.max(0,Math.min(600,value));}};
+  const rows=Array.from({length:60},(_,index)=>{const row=messageRow({text:`Сообщение ${index}`});row.parentElement=scroller;return row;});
+  const root={querySelector:selector=>selector==='.messageWrapper'?rows[60-mounted]:{textContent:'Чат'},querySelectorAll(){checks++;if(checks>=15){mounted=60;return [];}return [{getClientRects:()=>[1]}];}};
+  const document={title:'MAX',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>rows.slice(60-mounted)};
+  const result=await loadContent(document,{instantWait:true}).exportOpen({limit:100},()=>{});
+  assert.equal(result.messages.length,60);
+  assert.ok(checks>=15);
 });
 
 test('history retries the first window when the loader binds after the initial edge crossing', async () => {
