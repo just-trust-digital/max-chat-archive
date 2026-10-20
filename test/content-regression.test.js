@@ -43,6 +43,32 @@ test('photo uses its visible image without waiting for a download button', async
   assert.equal(closed, true);
 });
 
+test('lazy MAX photo must enter the viewport before its click opens a viewer', async () => {
+  let visible=false,open=false;
+  const image={currentSrc:'https://i.oneme.ru/photo.jpg',naturalWidth:1200,naturalHeight:800,closest:()=>null};
+  const viewer={querySelectorAll:()=>[image],querySelector:()=>({click(){open=false;}})};
+  const tile={scrollIntoView(){visible=true;},click(){if(visible)open=true;}};
+  const api=loadContent({querySelector:()=>open?viewer:null},{instantWait:true,capture:async()=>null});
+  const result=await api.capturePhoto(tile,()=>{});
+  assert.equal(result?.url,image.currentSrc);
+  assert.equal(open,false);
+});
+
+test('media inventory is refreshed after MAX hydrates a video placeholder', async () => {
+  let hydrated=false;
+  const tile={querySelector:()=>null};
+  const video={tagName:'VIDEO',textContent:'',closest:()=>null,hasAttribute:()=>false,getAttribute:name=>name==='src'?'https://maxvd640.okcdn.ru/video.mp4':null};
+  const row=messageRow({text:'Видео'});
+  row.scrollIntoView=()=>{hydrated=true;};
+  row.querySelectorAll=selector=>selector.includes('button.tile')?(hydrated?[]:[tile]):(hydrated?[video]:[]);
+  const root={querySelector:selector=>selector==='.messageWrapper'?row:{textContent:'Чат'}};
+  const document={title:'MAX',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>[row]};
+  const result=await loadContent(document,{instantWait:true,capture:async()=>null}).exportOpen({limit:100,media:true,downloadMedia:true},()=>{});
+  assert.equal(result.messages[0].attachments.length,1);
+  assert.equal(result.messages[0].attachments[0].kind,'video');
+  assert.equal(result.messages[0].attachments[0].downloadable,true);
+});
+
 function messageRow({ author = 'Екатерина Волкова', text = 'Добрый вечер', time = '17:58', previousElementSibling = null, ownDate = null } = {}) {
   const header = { textContent: author, innerText: author };
   const textElement = { textContent: text, innerText: text };

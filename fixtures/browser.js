@@ -24,6 +24,8 @@
         const grid = document.createElement('div'); grid.setAttribute('aria-label', 'Прикрепленные фото');
         grid.innerHTML = '<button class="tile">Фото</button>';
         grid.querySelector('button').addEventListener('click', () => {
+          const tileBounds=grid.getBoundingClientRect(), paneBounds=pane.getBoundingClientRect();
+          if(tileBounds.bottom<=paneBounds.top || tileBounds.top>=paneBounds.bottom) return;
           photoCaptures.push({ phase });
           const viewer = document.createElement('dialog');
           viewer.innerHTML = '<img src="/fixtures/photo.svg" alt="Тестовое фото"><button aria-label="Close">Закрыть</button><button aria-label="Download">Скачать фото</button>';

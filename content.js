@@ -208,19 +208,25 @@
     });
   }
   async function capturePhoto(tile, assertActive) {
-    if (document.querySelector('dialog[open]')) return null;
+    if (document.querySelector('dialog[open]')) return {error: 'viewer_already_open'};
     let viewer = null;
     try {
-      assertActive(); tile.click();
+      assertActive();
+      tile.scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
+      await wait(250); if (cancelled) return null; assertActive();
+      tile.click();
       for (let attempt = 0; attempt < 50; attempt++) {
         if (cancelled) return null;
         await wait(100); assertActive();
         viewer = document.querySelector('dialog[open]');
+        const video = viewer?.querySelector('video');
+        const videoUrl = video?.currentSrc || video?.getAttribute?.('src') || video?.querySelector?.('source[src]')?.getAttribute('src');
+        if (videoUrl && /^https?:\/\//i.test(videoUrl)) return {kind: 'video', url: videoUrl, quality: 'viewer'};
         const image = viewer && [...viewer.querySelectorAll('img[src]')].find(img => !img.closest('[class*="avatar"]') && /^https?:\/\//i.test(img.currentSrc || img.getAttribute('src') || ''));
         if (!image) continue;
         return { url: image.currentSrc || image.getAttribute('src'), quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
       }
-      return null;
+      return {error: viewer ? 'viewer_image_unavailable' : 'viewer_not_opened'};
     } finally {
       const close = viewer?.querySelector('button[aria-label="Close"], button[aria-label="Закрыть"]');
       if (close) { close.click(); await wait(50); }
@@ -228,6 +234,8 @@
   }
   async function captureVisibleUrls(items, options, cache, progress, title, assertActive = () => {}) {
     if (!options.downloadMedia || !options.media || typeof window === 'undefined') return items;
+    cache.rowIds ||= new WeakMap();
+    cache.nextRowId ||= 0;
     async function resolveFile(key, name, capture) {
       const started = Date.now();
       const update = () => progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size, fileName: name, fileElapsed: Math.floor((Date.now() - started) / 1000) });
@@ -238,9 +246,17 @@
     }
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     for (let index = 0; index < rows.length; index++) {
+      if (!items[index]?.attachments.length) continue;
+      rows[index].scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
+      await wait(300); assertActive();
+      // MAX can replace a placeholder tile with video/source only after it is
+      // visible. Refresh the media inventory before capturing its addresses.
+      const hydrated = attachmentsOf(rows[index]);
+      if (hydrated.length) items[index].attachments = hydrated;
       const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"], button[aria-label="Download"]')];
       const files = items[index]?.attachments.filter(attachment => attachment.source === 'download-button') || [];
-      const messageKey = items[index] && signature(items[index]);
+      if (!cache.rowIds.has(rows[index])) cache.rowIds.set(rows[index], ++cache.nextRowId);
+      const messageKey = `row:${cache.rowIds.get(rows[index])}`;
       for (let fileIndex = 0; fileIndex < Math.min(buttons.length, files.length); fileIndex++) {
         if (cancelled) return items;
         const key = `${messageKey}:${fileIndex}`;
@@ -266,6 +282,7 @@
         }
         const captured = cache.get(key);
         if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
+        else photos[photoIndex].resolutionError = captured?.error || 'photo_url_unavailable';
       }
     }
     return items;
@@ -317,11 +334,12 @@
     scroller.dispatchEvent?.(new Event('scroll', { bubbles: true }));
   }
   async function resolveHistoryAttachments(messages, options, progress, title, assertActive) {
+    const mediaKey = item => JSON.stringify([item.dateLabel, item.time, item.direction, item.text?.replace(/\s+/g, ' ').trim()]);
     const targets = new Map();
     if (!options.media || !options.downloadMedia) return { neededMessages: 0, unresolvedMessages: 0, scrollAttempts: 0 };
     for (const message of messages) {
       if (!message.attachments.some(item => item.source === 'download-button' || item.source === 'photo-tile')) continue;
-      const key = signature(message);
+      const key = mediaKey(message);
       if (!targets.has(key)) targets.set(key, []);
       targets.get(key).push(message);
     }
@@ -337,7 +355,7 @@
       if (cancelled) break;
       assertActive();
       const visible = snapshot();
-      const keys = visible.map(signature);
+      const keys = visible.map(mediaKey);
       // Keep row indexes aligned while resolving only files included by the history limit.
       const wanted = visible.map((item, index) => targets.has(keys[index]) ? item : { ...item, attachments: [] });
       await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal }), title, assertActive);
@@ -346,10 +364,9 @@
       for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
         const item = wanted[itemIndex], key = keys[itemIndex], copies = targets.get(key);
         if (!copies) continue;
-        for (const copy of copies) item.attachments.forEach((attachment, index) => {
-          if (attachment.source === 'download-button-url' || attachment.source === 'photo-viewer') Object.assign(copy.attachments[index], attachment);
-        });
-        targets.delete(key);
+        const copy = copies.shift();
+        copy.attachments = item.attachments.map(attachment => ({...attachment}));
+        if (!copies.length) targets.delete(key);
       }
       if (!targets.size || cancelled) break;
       scroller = historyScroller();
@@ -363,7 +380,8 @@
       else stable = 0;
       if (stable >= 12) break;
     }
-    return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
+    const failedFiles = messages.flatMap(item => item.attachments).filter(item => item.source === 'photo-tile' || item.source === 'download-button').length;
+    return { neededMessages, unresolvedMessages: targets.size, failedFiles, scrollAttempts };
   }
   async function exportOpen(options, progress, assertActive = () => {}) {
     assertActive();
