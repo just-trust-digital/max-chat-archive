@@ -7,7 +7,7 @@ const path = require('node:path');
 function loadContent(document, { instantWait = false, capture = null } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
   const instrumented = (instantWait ? source.replace('const wait = ms => new Promise(resolve => setTimeout(resolve, ms));', 'const wait = () => Promise.resolve();') : source)
-    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
+    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -16,6 +16,7 @@ function loadContent(document, { instantWait = false, capture = null } = {}) {
     location: { href: 'https://web.max.ru/' },
     URL,
     setTimeout,
+    setInterval, clearInterval,
     Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     WheelEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     getComputedStyle: element => ({ overflowY: element.overflowY || 'visible' }),
@@ -24,6 +25,23 @@ function loadContent(document, { instantWait = false, capture = null } = {}) {
   vm.runInNewContext(instrumented, context);
   return context.contentUnderTest;
 }
+
+test('photo uses its visible image without waiting for a download button', async () => {
+  let open = false, clicks = 0, closed = false;
+  const image = { currentSrc: 'https://i.oneme.ru/photo.jpg', naturalWidth: 1000, naturalHeight: 462, closest: () => null };
+  const viewer = {
+    querySelectorAll: () => [image],
+    querySelector: selector => selector.includes('Close') ? { click() { closed = true; open = false; } } : { click() {} }
+  };
+  const api = loadContent({ querySelector: () => open ? viewer : null }, {
+    instantWait: true, capture: async () => { clicks++; return null; }
+  });
+  const result = await api.capturePhoto({ click() { open = true; } }, () => {});
+  assert.equal(clicks, 0, 'do not wait for an original when viewer URL is ready');
+  assert.equal(result.url, image.currentSrc);
+  assert.equal(result.quality, 'viewer');
+  assert.equal(closed, true);
+});
 
 function messageRow({ author = 'Екатерина Волкова', text = 'Добрый вечер', time = '17:58', previousElementSibling = null, ownDate = null } = {}) {
   const header = { textContent: author, innerText: author };

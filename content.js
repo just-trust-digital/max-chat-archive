@@ -4,6 +4,7 @@
   const PHOTO_TILES = '[aria-label="Прикрепленные фото"] button.tile';
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   let cancelled = false;
+  const captureCancellations = new Set();
 
   function titleOf(row) {
     return (row.querySelector('.title, [class*="title"]')?.textContent || row.getAttribute('aria-label') || row.innerText?.split('\n')[0] || '').trim();
@@ -170,10 +171,15 @@
     return new Promise(resolve => {
       const marker = 'max-archive-download-capture';
       const nonce = crypto.randomUUID();
-      let ready = false;
+      let ready = false, settled = false;
+      const cancelCapture = () => finish(null);
+      captureCancellations.add(cancelCapture);
       const timer = setTimeout(() => finish(null), 15000);
       const readyTimer = setTimeout(() => { if (!ready) finish(null); }, 800);
       function finish(value) {
+        if (settled) return;
+        settled = true;
+        captureCancellations.delete(cancelCapture);
         clearTimeout(timer); clearTimeout(readyTimer);
         window.removeEventListener('message', onMessage);
         window.postMessage({ marker, type: 'cancel', nonce }, location.origin);
@@ -202,10 +208,7 @@
         viewer = document.querySelector('dialog[open]');
         const image = viewer && [...viewer.querySelectorAll('img[src]')].find(img => !img.closest('[class*="avatar"]') && /^https?:\/\//i.test(img.currentSrc || img.getAttribute('src') || ''));
         if (!image) continue;
-        const fallback = { url: image.currentSrc || image.getAttribute('src'), quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
-        const download = viewer.querySelector('button[aria-label="Download"], button[aria-label="Скачать"]');
-        const original = download ? await captureButton(download) : null;
-        return original?.url && /^https:\/\//i.test(original.url) ? { ...original, quality: 'download' } : fallback;
+        return { url: image.currentSrc || image.getAttribute('src'), quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
       }
       return null;
     } finally {
@@ -215,6 +218,14 @@
   }
   async function captureVisibleUrls(items, options, cache, progress, title, assertActive = () => {}) {
     if (!options.downloadMedia || !options.media || typeof window === 'undefined') return items;
+    async function resolveFile(key, name, capture) {
+      const started = Date.now();
+      const update = () => progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size, fileName: name, fileElapsed: Math.floor((Date.now() - started) / 1000) });
+      update();
+      const timer = setInterval(update, 1000);
+      try { cache.set(key, await capture()); }
+      finally { clearInterval(timer); update(); }
+    }
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     for (let index = 0; index < rows.length; index++) {
       const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"]')];
@@ -224,8 +235,7 @@
         if (cancelled) return items;
         const key = `${messageKey}:${fileIndex}`;
         if (!cache.has(key)) {
-          progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size + 1 });
-          cache.set(key, await captureButton(buttons[fileIndex]));
+          await resolveFile(key, files[fileIndex].name, () => captureButton(buttons[fileIndex]));
         }
         const captured = cache.get(key);
         if (captured?.url && /^https:\/\//i.test(captured.url)) {
@@ -242,8 +252,7 @@
         assertActive();
         const key = `${messageKey}:photo:${photoIndex}`;
         if (!cache.has(key)) {
-          progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size + 1 });
-          cache.set(key, await capturePhoto(tiles[photoIndex], assertActive));
+          await resolveFile(key, photos[photoIndex].name, () => capturePhoto(tiles[photoIndex], assertActive));
         }
         const captured = cache.get(key);
         if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
@@ -303,9 +312,10 @@
       targets.get(key).push(message);
     }
     const neededMessages = targets.size, cache = new Map();
+    const fileTotal = [...targets.values()].reduce((sum, copies) => sum + copies[0].attachments.filter(item => item.source === 'download-button' || item.source === 'photo-tile').length, 0);
     let scrollAttempts = 0, stable = 0;
     if (!targets.size || cancelled) return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
-    progress({ title, count: messages.length, stage: 'resolving', fileCount: 0 });
+    progress({ title, count: messages.length, stage: 'resolving', fileCount: 0, fileTotal });
     let scroller = historyScroller();
     if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(500); }
     const started = Date.now();
@@ -316,7 +326,7 @@
       const keys = visible.map(signature);
       // Keep row indexes aligned while resolving only files included by the history limit.
       const wanted = visible.map((item, index) => targets.has(keys[index]) ? item : { ...item, attachments: [] });
-      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length }), title, assertActive);
+      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal }), title, assertActive);
       assertActive();
       const before = targets.size;
       for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
@@ -463,7 +473,7 @@
     if (port.name !== 'max-export') return;
     port.onMessage.addListener(async message => {
       try {
-        if (message.type === 'cancel') { cancelled = true; return; }
+        if (message.type === 'cancel') { cancelled = true; for (const cancelCapture of captureCancellations) cancelCapture(); return; }
         cancelled = false;
         if (message.type === 'discover') port.postMessage({ type: 'result', id: message.id, value: await discover() });
         if (message.type === 'current') port.postMessage({ type: 'result', id: message.id, value: { title: openedTitle() } });

@@ -205,7 +205,8 @@
         try {
           const result = await call('export', { chat: info, options: settings }, value => {
             const phase = value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
-            stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${value.fileCount ? `, файлов ${value.fileCount}` : ''}`);
+            const files = value.stage === 'resolving' ? `; обработано вложений ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
+            stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${files}`, value.stage === 'resolving' ? value.fileCount : null, value.fileTotal);
             rows[index].textContent = `${value.title} — ${phase.toLowerCase()}, ${value.count} сообщений`;
           });
           stage(`Чат ${index + 1} из ${selected.length}: подготовка сообщений…`);

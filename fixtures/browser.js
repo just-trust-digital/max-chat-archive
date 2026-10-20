@@ -19,11 +19,12 @@
         const grid = document.createElement('div'); grid.setAttribute('aria-label', 'Прикрепленные фото');
         grid.innerHTML = '<button class="tile">Фото</button>';
         grid.querySelector('button').addEventListener('click', () => {
+          photoCaptures.push({ phase });
           const viewer = document.createElement('dialog');
           viewer.innerHTML = '<img src="/fixtures/photo.svg" alt="Тестовое фото"><button aria-label="Close">Закрыть</button><button aria-label="Download">Скачать фото</button>';
           viewer.querySelector('[aria-label="Close"]').onclick = () => viewer.remove();
           viewer.querySelector('[aria-label="Download"]').onclick = () => {
-            photoCaptures.push({ phase });
+            throw new Error('Фото должно сохраняться по адресу просмотрщика без кнопки скачивания');
             const link = document.createElement('a'); link.href = 'https://fd.oneme.ru/fixture-photo.jpg'; link.download = 'original-photo.jpg'; link.click();
           };
           document.body.append(viewer); viewer.showModal();
