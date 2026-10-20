@@ -10,6 +10,8 @@
   const log = $('log');
   const stageProgress = $('stage-progress');
   let port, sequence = 0, pending = new Map(), chats = [], discoveryComplete = false, running = false, stopped = false, currentAbort = null;
+  const durable = typeof CheckpointStore === 'undefined' ? null : CheckpointStore;
+  let recoveryBusy=false;
   const defaults = { format: 'html-json', split: 'by-chat', media: true, downloadMedia: false, links: true, reactions: true, limit: 10000 };
 
   function note(message, error = false) { status.textContent = message; status.style.color = error ? '#b52831' : ''; }
@@ -19,10 +21,10 @@
     if (total && completed != null) { stageProgress.max = total; stageProgress.value = completed; }
     else stageProgress.removeAttribute('value');
   }
-  function call(type, data = {}, onProgress = () => {}) {
+  function call(type, data = {}, onProgress = () => {}, onCheckpoint = async () => {}) {
     return new Promise((resolve, reject) => {
       const id = ++sequence;
-      pending.set(id, { resolve, reject, onProgress, chunks: [] });
+      pending.set(id, { resolve, reject, onProgress, onCheckpoint, chunks: [] });
       port.postMessage({ type, id, ...data });
     });
   }
@@ -32,6 +34,16 @@
     port.onMessage.addListener(message => {
       const job = pending.get(message.id);
       if (!job) return;
+      if (message.type === 'checkpoint-start') {job.checkpoint={token:message.token,value:message.value,chunks:[]};return;}
+      if (message.type === 'checkpoint-chunk') {if(job.checkpoint?.token===message.token) job.checkpoint.chunks.push(message.messages);return;}
+      if (message.type === 'checkpoint-end') {
+        const copy=job.checkpoint;job.checkpoint=null;
+        if(copy?.token!==message.token) return;
+        Promise.resolve().then(()=>job.onCheckpoint({...copy.value,messages:copy.chunks.flat()})).then(
+          ()=>port?.postMessage({type:'checkpoint-ack',token:message.token}),
+          error=>port?.postMessage({type:'checkpoint-ack',token:message.token,error:`Не удалось сохранить копию: ${error.message}`}));
+        return;
+      }
       if (message.type === 'progress') return job.onProgress(message.value);
       if (message.type === 'chunk') { job.chunks.push(message.messages); return; }
       pending.delete(message.id);
@@ -131,7 +143,7 @@
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     return bytes;
   }
-  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress) {
+  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null) {
     let total = initialBytes;
     const used = new Map();
     const entries = [...new Map(chat.messages.flatMap(message => message.attachments).filter(attachment => attachment.downloadable && attachment.url).map(attachment => [attachment.url, attachment])).values()];
@@ -163,10 +175,14 @@
           name += ext;
         }
         const localPath = `media/${String(used.size + 1).padStart(4, '0')}-${name}`;
+        if(durable && checkpointId) {
+          try {await durable.file(checkpointId,attachment.url,{localPath,bytes,mimeType:attachment.mimeType});}
+          catch(error) {error.code='CHECKPOINT_WRITE';throw error;}
+        }
         zip.add(`${path}/${localPath}`, bytes);
         used.set(attachment.url, localPath);
         total += bytes.length;
-      } catch (error) { report.skippedMedia.push({ url: attachment.url, reason: error.name === 'AbortError' ? 'Превышено время загрузки' : error.message }); }
+      } catch (error) { if(error.code==='CHECKPOINT_WRITE') {error.message=`Не удалось сохранить копию файла: ${error.message}`;throw error;} report.skippedMedia.push({ url: attachment.url, reason: error.name === 'AbortError' ? 'Превышено время загрузки' : error.message }); }
       finally { clearTimeout(timer); currentAbort = null; completed++; onProgress(completed, entries.length); }
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
@@ -185,7 +201,7 @@
   }
   async function saveZip(zip, filename) { await saveBlob(zip.blob(), filename); }
   async function run() {
-    if (running) return;
+    if (running || recoveryBusy) return;
     let reportTabId = null;
     try {
       const selected = selection(), settings = options();
@@ -209,9 +225,12 @@
       await showMax();
       const combinedZip = perChat ? null : new ZipArchive();
       const report = { exportedAt: new Date().toISOString(), extensionVersion: chrome.runtime.getManifest().version, source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
+      const runId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       for (let index = 0; index < selected.length; index++) {
         if (stopped) break;
         const info = selected[index];
+        const checkpointId=`${runId}:${index}`;
+        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat,settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
         note(`Чат ${index + 1} из ${selected.length}: ${info?.title || 'открытый чат'}`);
         rows[index].textContent = `${info?.title || 'Открытый чат'} — чтение истории`;
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
@@ -222,10 +241,11 @@
             const files = value.stage === 'resolving' ? `; получение адресов: ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
             stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${files}`, value.stage === 'resolving' ? value.fileCount : null, value.fileTotal);
             rows[index].textContent = `${value.title} — ${phase[0].toLowerCase() + phase.slice(1)}, ${value.count} сообщений`;
-          });
+          }, chat => saveCopy(chat,'history'));
           stage(`Чат ${index + 1} из ${selected.length}: подготовка сообщений…`);
           const unknownDates = result.messages.filter(message => !ArchiveFormat.dateOf(message)).length;
           result.messages = ArchiveFormat.filter(result.messages, settings);
+          await saveCopy(result,'media');
           const path = filename(index, result);
           const zip = perChat ? new ZipArchive() : combinedZip;
           const skippedBefore = report.skippedMedia.length;
@@ -234,10 +254,11 @@
             rows[index].textContent = `${result.title} — загрузка вложений`;
             const total = await downloadMedia(zip, result, path, report, perChat ? 0 : report.mediaBytes, (done, count) => {
               stage(`Чат ${index + 1} из ${selected.length}: скачивание файлов ${done} из ${count}`, done, count);
-            });
+            },checkpointId);
             chatMediaBytes = perChat ? total : total - report.mediaBytes;
             report.mediaBytes += chatMediaBytes;
           }
+          await saveCopy(result,'ready');
           stage(`Чат ${index + 1} из ${selected.length}: создание ZIP…`);
           ArchiveFormat.add(zip, path, result, settings.format);
           const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, history: result.history };
@@ -250,7 +271,7 @@
         } catch (error) {
           report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
           rows[index].textContent = `${info?.title || 'Открытый чат'} — ошибка: ${error.message}`;
-          if (error.code === 'MAX_HIDDEN') stopped = true;
+          if (['MAX_HIDDEN','CHECKPOINT_WRITE','EXPORT_BUSY'].includes(error.code)) stopped = true;
         }
         $('progress').value = index + 1;
         $('overall-text').textContent = `Обработано ${index + 1} из ${selected.length} чатов`;
@@ -270,12 +291,60 @@
     finally {
       visibilityPrompt(false);
       running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; updateSelection();
+      await renderRecovery();
       if (reportTabId != null) {
         try { await chrome.tabs.update(reportTabId, { active: true }); } catch { /* The report tab may have been closed. */ }
       }
     }
   }
+  async function recoverCopy(id) {
+    if(running || recoveryBusy) return;
+    recoveryBusy=true;start.disabled=true;
+    try {
+      const saved=await durable.get(id);
+      if(!saved) throw new Error('Сохранённая копия не найдена.');
+      const files=await durable.files(id), zip=new ZipArchive(), chat=saved.chat;
+      const byUrl=new Map(files.map(file=>[file.url,file]));
+      chat.messages=ArchiveFormat.filter(chat.messages,saved.settings);
+      for(const message of chat.messages) for(const attachment of message.attachments) {
+        delete attachment.localPath;
+        const file=byUrl.get(attachment.url);
+        if(file) {attachment.localPath=file.localPath;attachment.mimeType=file.mimeType;}
+      }
+      const referenced=new Set(chat.messages.flatMap(message=>message.attachments).map(item=>item.url));
+      for(const file of files) if(referenced.has(file.url)) zip.add(`${saved.path}/${file.localPath}`,file.bytes);
+      ArchiveFormat.add(zip,saved.path,chat,saved.settings.format);
+      const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath);
+      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history}],missingFiles:missing.length},null,2));
+      await saveZip(zip,`max-recovered-${saved.path}.zip`);
+      note(`Сохранённая копия скачана. Сообщений: ${chat.messages.length}; файлов без локальной копии: ${missing.length}.`);
+    } catch(error) {note(error.message,true);}
+    finally {recoveryBusy=false;start.disabled=false;}
+  }
+  async function renderRecovery() {
+    if(!durable) return;
+    try {
+      const saved=await durable.list(), container=$('recovery-list');
+      container.replaceChildren();$('recovery-panel').hidden=!saved.length;
+      for(const copy of saved) {
+        const row=document.createElement('div');row.className='recovery-row';
+        const info=document.createElement('div');info.className='recovery-info';
+        const title=document.createElement('strong');title.textContent=copy.title;
+        const detail=document.createElement('small');
+        const state={history:'Чтение истории',media:'Обработка вложений',ready:'Подготовлено к сохранению'}[copy.state] || 'Копия';
+        detail.textContent=`Сообщений: ${copy.messages} · ${new Date(copy.updatedAt).toLocaleString('ru-RU')} · ${state}`;
+        info.append(title,detail);
+        const actions=document.createElement('div');actions.className='actions';
+        const download=document.createElement('button');download.className='secondary';download.textContent='Скачать сохранённое';download.disabled=running;
+        download.addEventListener('click',()=>recoverCopy(copy.id));
+        const remove=document.createElement('button');remove.className='text-button';remove.textContent='Удалить копию';remove.disabled=running;
+        remove.addEventListener('click',async()=>{if(running || recoveryBusy) return;try{await durable.remove(copy.id);await renderRecovery();}catch(error){note(error.message,true);}});
+        actions.append(download,remove);row.append(info,actions);container.append(row);
+      }
+    } catch(error) {note(`Сохранённые копии недоступны: ${error.message}`,true);}
+  }
   async function init() {
+    await renderRecovery();
     try {
       const saved = (await chrome.storage.local.get('settings')).settings || defaults;
       for (const key of ['format', 'split', 'from', 'to', 'limit']) if (saved[key] != null && $(key)) $(key).value = saved[key];

@@ -6,6 +6,7 @@
     <header class="topbar"><div class="brand"><span class="mark">M</span><span>MAX Архив</span></div><span class="local">Локальный архив</span></header>
     <section class="hero"><div class="eyebrow">ЭКСПОРТ</div><h1>История чатов</h1><p>Выберите переписки и данные для архива.</p></section>
     <div id="status" class="notice" role="status">Подключаемся к вкладке MAX…</div>
+    <section id="recovery-panel" class="card recovery-panel" hidden><h2>Сохранённые копии</h2><p class="hint">Сообщения и скачанные файлы сохраняются в этом браузере. После сбоя можно скачать последнюю копию; она может содержать только часть истории и вложений.</p><div id="recovery-list"></div></section>
     <div class="grid">
       <section class="card">
         <div class="card-head"><div><h2>Чаты</h2><p>Доступные в текущем списке MAX</p></div><button id="refresh" class="text-button" type="button">Обновить</button></div>
@@ -37,11 +38,12 @@
       </section>
     </div>
     <section class="runbar"><div><strong id="selection-count">Открытый чат</strong><div class="fine">Во время экспорта держите вкладку MAX видимой.</div></div><div class="actions"><button id="cancel" class="secondary" hidden>Остановить</button><button id="start" class="primary">Скачать ZIP</button></div></section>
-    <section id="progress-panel" class="card progress-panel" hidden><h2>Ход экспорта</h2><div id="overall-text" class="progress-caption">Обработано 0 чатов</div><progress id="progress" max="1" value="0"></progress><div id="progress-text" role="status"></div><progress id="stage-progress" hidden></progress><ul id="log" class="chat-progress-list"></ul></section>
+    <section id="progress-panel" class="card progress-panel" hidden><h2>Ход экспорта</h2><div id="overall-text" class="progress-caption">Обработано 0 чатов</div><progress id="progress" max="1" value="0"></progress><div id="progress-text" role="status"></div><progress id="stage-progress" hidden></progress><div id="checkpoint-text" class="hint" role="status"></div><ul id="log" class="chat-progress-list"></ul></section>
   </main>
   <dialog id="visibility-dialog" class="visibility-dialog" aria-labelledby="visibility-title"><h2 id="visibility-title">Откройте вкладку MAX</h2><p>Экспорт приостановлен. Оставьте MAX видимым до окончания: история и фотографии загружаются в этой вкладке.</p><p>Когда MAX станет видимым, экспорт продолжится автоматически.</p><div class="actions"><button id="show-max" class="primary" autofocus>Показать MAX</button><button id="visibility-stop" class="secondary">Остановить экспорт</button></div></dialog>
   <script src="zip.js"></script>
   <script src="format.js"></script>
+  <script src="checkpoint.js"></script>
   <script src="export.js"></script>
 </body>
 </html>

@@ -653,3 +653,17 @@ test('a second export and foreign cancellation cannot interfere with the active 
   release();await first;
   assert.equal(a.out.at(-1).type,'result');
 });
+
+
+test('history checkpoints precede file resolution and failed persistence stops reading', async () => {
+  const row=messageRow({text:'Сохранённое сообщение'});
+  const root={querySelector:selector=>selector.includes('messageWrapper') ? row : {textContent:'Чат'}};
+  const document={title:'MAX',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>[row]};
+  const api=loadContent(document,{instantWait:true});
+  const copies=[];
+  await api.exportOpen({limit:100},()=>{},()=>{},async value=>copies.push(JSON.parse(JSON.stringify(value))));
+  assert.equal(copies[0].messages[0].text,'Сохранённое сообщение');
+  assert.equal(copies[0].complete,false);
+  assert.equal(copies[0].reason,'checkpoint');
+  await assert.rejects(api.exportOpen({limit:100},()=>{},()=>{},async()=>{throw Error('disk full');}),/disk full/);
+});

@@ -70,6 +70,8 @@
     name: 'max-export', onMessage: { addListener(fn) { handleMessage = fn; } },
     postMessage(message) {
       const job = jobs.get(message.id); if (!job) return;
+      if(message.type==='checkpoint-start' || message.type==='checkpoint-chunk') return;
+      if(message.type==='checkpoint-end') {queueMicrotask(()=>handleMessage({type:'checkpoint-ack',token:message.token}));return;}
       if (message.type === 'progress') { if (message.value.stage) phase = message.value.stage; document.getElementById('result').textContent = `${phase}: ${message.value.count} сообщений`; return; }
       if (message.type === 'chunk') { job.chunks.push(...message.messages); return; }
       jobs.delete(message.id);

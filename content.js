@@ -241,7 +241,7 @@
         const video = viewer?.querySelector('video');
         const videoUrl = video?.currentSrc || video?.getAttribute?.('src') || video?.querySelector?.('source[src]')?.getAttribute('src');
         if (videoUrl && /^https?:\/\//i.test(videoUrl)) return {kind: 'video', url: videoUrl, quality: 'viewer'};
-        const candidates = viewer ? [...viewer.querySelectorAll('img[src]')].filter(img => !img.closest('[class*="avatar"]')).map(image => ({image, url: [image.currentSrc, image.getAttribute?.('src')].find(url => /^https:\/\//i.test(url || ''))})).filter(item => item.url) : [];
+        const candidates = viewer ? [...viewer.querySelectorAll('img[src]')].filter(img => !img.closest('[class*="avatar"]')).map(image => ({image, url: [image.currentSrc, image.getAttribute?.('src')].find(url => /^https?:\/\//i.test(url || ''))})).filter(item => item.url) : [];
         const candidate = candidates.sort((a,b) => (b.image.naturalWidth || 0) - (a.image.naturalWidth || 0))[0];
         if (!candidate) continue;
         const image = candidate.image;
@@ -254,13 +254,13 @@
       if (close) { close.click(); await wait(50); }
     }
   }
-  async function captureVisibleUrls(items, options, cache, progress, title, assertActive = () => {}) {
+  async function captureVisibleUrls(items, options, cache, progress, title, assertActive = () => {}, onRow = async () => {}) {
     if (!options.downloadMedia || !options.media || typeof window === 'undefined') return items;
     cache.rowIds ||= new WeakMap();
     cache.nextRowId ||= 0;
     async function resolveFile(key, name, capture) {
       const started = Date.now();
-      const update = () => progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size, fileName: name, fileElapsed: Math.floor((Date.now() - started) / 1000) });
+      const update = () => progress({ title, count: items.length, stage: document.visibilityState === 'hidden' ? 'visibility' : 'resolving', fileCount: cache.size, fileName: name, fileElapsed: Math.floor((Date.now() - started) / 1000) });
       update();
       const timer = setInterval(update, 1000);
       try { cache.set(key, await capture()); }
@@ -307,6 +307,7 @@
         if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
         else { photos[photoIndex].resolutionError = captured?.error || 'photo_url_unavailable'; if(captured?.diagnostics) photos[photoIndex].resolutionDiagnostics=captured.diagnostics; }
       }
+      await onRow(index,items[index]);
     }
     return items;
   }
@@ -356,7 +357,7 @@
     else scroller.scrollTop -= distance; // Reversed panes can use negative coordinates.
     scroller.dispatchEvent?.(new Event('scroll', { bubbles: true }));
   }
-  async function resolveHistoryAttachments(messages, options, progress, title, assertActive) {
+  async function resolveHistoryAttachments(messages, options, progress, title, assertActive, checkpoint = async () => {}) {
     const mediaKey = item => JSON.stringify([item.dateLabel, item.time, item.direction, item.text?.replace(/\s+/g, ' ').trim()]);
     const targets = new Map();
     if (!options.media || !options.downloadMedia) return { neededMessages: 0, unresolvedMessages: 0, scrollAttempts: 0 };
@@ -388,16 +389,18 @@
         const copy = targets.get(key)?.[occurrence];
         return copy ? {...item, _captureKey:captureIds.get(copy)} : {...item, attachments:[]};
       });
-      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal: Math.max(fileTotal, cache.size) }), title, assertActive);
-      assertActive();
       const before = targets.size;
-      for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
-        const item = wanted[itemIndex], key = keys[itemIndex], copies = targets.get(key);
-        if (!copies || !item._captureKey) continue;
-        const copy = copies.shift();
-        copy.attachments = item.attachments.map(attachment => ({...attachment}));
-        if (!copies.length) targets.delete(key);
-      }
+      let savedAt=Date.now();
+      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal: Math.max(fileTotal, cache.size) }), title, assertActive, async (itemIndex,item) => {
+        const copies=targets.get(keys[itemIndex]);
+        if(!copies || !item._captureKey) return;
+        const copy=copies.shift();
+        copy.attachments=item.attachments.map(attachment=>({...attachment}));
+        if(!copies.length) targets.delete(keys[itemIndex]);
+        if(Date.now()-savedAt>=5000) {await checkpoint();savedAt=Date.now();}
+      });
+      assertActive();
+      await checkpoint();
       if (!targets.size || cancelled) break;
       scroller = historyScroller();
       if (!scroller) break;
@@ -413,7 +416,7 @@
     const failedFiles = messages.flatMap(item => item.attachments).filter(item => item.source === 'photo-tile' || item.source === 'download-button').length;
     return { neededMessages, unresolvedMessages: targets.size, failedFiles, scrollAttempts };
   }
-  async function exportOpen(options, progress, assertActive = () => {}) {
+  async function exportOpen(options, progress, assertActive = () => {}, checkpoint = async () => {}) {
     assertActive();
     const root = document.querySelector('.openedChat');
     if (!root) throw new Error('Открытый чат не найден. Выберите переписку в MAX.');
@@ -433,11 +436,15 @@
     const initialCount = messages.length;
     const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, visibilityWaitMs: initialVisibilityWait, pacing: chrome.runtime.sendMessage ? 'extension-worker' : 'page-timer', lastSteps: [] };
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
+    let checkpointAt=Date.now(), checkpointCount=messages.length;
+    const saveHistory = () => checkpoint({title,messages,complete:false,reason:'checkpoint',gaps,history});
+    await saveHistory();
     let movedTowardHistory = false;
     if (!scroller) {
       if (messages.length > options.limit) messages = messages.slice(-options.limit);
       progress({ title, count: messages.length, stage: 'history-ready', reason: 'scroll_container_not_found' });
-      history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive);
+      await saveHistory();
+      history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive, saveHistory);
       return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps, history };
     }
     const started = Date.now();
@@ -476,6 +483,7 @@
       history.lastSteps.push({ beforeTop: previousTop, afterTop: scroller.scrollTop, height: scroller.scrollHeight, viewport: scroller.clientHeight, mounted: current.length, collected: messages.length, replaced, connected, loading, waitMs: Date.now() - waitStarted, visibility: document.visibilityState || 'unknown' });
       if (history.lastSteps.length > 20) history.lastSteps.shift();
       progress({ title, count: messages.length, round, stage: 'history', limit: options.limit });
+      if (messages.length!==checkpointCount && (Date.now()-checkpointAt>=5000 || messages.length-checkpointCount>=500)) {await saveHistory();checkpointAt=Date.now();checkpointCount=messages.length;}
       if (messages.length === before && !moved && !replaced && !loading) stable++;
       else stable = 0;
       if (stable >= 4 && messages.length === initialCount && history.restarts === 0) {
@@ -499,7 +507,8 @@
     if (messages.length > options.limit) messages = messages.slice(-options.limit);
     assertActive();
     progress({ title, count: messages.length, stage: 'history-ready', reason });
-    history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive);
+    await saveHistory();
+    history.mediaResolution = await resolveHistoryAttachments(messages, options, progress, title, assertActive, saveHistory);
     assertActive();
     return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps, history };
   }
@@ -542,8 +551,22 @@
   let activeOperation = null;
   chrome.runtime.onConnect.addListener(port => {
     if (port.name !== 'max-export') return;
-    port.onDisconnect?.addListener(() => { if (activeOperation?.port === port) { cancelled = true; for (const cancel of captureCancellations) cancel(); } });
+    const acknowledgements = new Map();
+    let checkpointSequence=0;
+    async function checkpoint(id,value) {
+      const token=++checkpointSequence;
+      const acknowledged=new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{acknowledgements.delete(token);reject(new Error('Нет подтверждения сохранения копии.'));},15000);
+        acknowledgements.set(token,{resolve:()=>{clearTimeout(timer);resolve();},reject:error=>{clearTimeout(timer);reject(error);}});
+      });
+      port.postMessage({type:'checkpoint-start',id,token,value:{...value,messages:[]}});
+      for(let index=0;index<value.messages.length;index+=250) port.postMessage({type:'checkpoint-chunk',id,token,messages:value.messages.slice(index,index+250)});
+      port.postMessage({type:'checkpoint-end',id,token});
+      await acknowledged;
+    }
+    port.onDisconnect?.addListener(() => { for(const ack of acknowledgements.values()) ack.reject(new Error('Связь со страницей экспорта потеряна.')); acknowledgements.clear(); if (activeOperation?.port === port) { cancelled = true; for (const cancel of captureCancellations) cancel(); } });
     port.onMessage.addListener(async message => {
+      if(message.type==='checkpoint-ack') {const ack=acknowledgements.get(message.token); acknowledgements.delete(message.token); if(message.error) {const error=new Error(message.error);error.code='CHECKPOINT_WRITE';ack?.reject(error);} else ack?.resolve(); return;}
       let ownsOperation = false;
       try {
         if (message.type === 'cancel') { if (activeOperation?.port !== port) return; cancelled = true; for (const cancelCapture of captureCancellations) cancelCapture(); return; }
@@ -557,7 +580,7 @@
           const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
           await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
-          const result = await exportOpen(message.options, progress, assertActive);
+          const result = await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,value));
           const messages = result.messages;
           for (let index = 0; index < messages.length; index += 250) {
             port.postMessage({ type: 'chunk', id: message.id, messages: messages.slice(index, index + 250) });

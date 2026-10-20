@@ -15,7 +15,7 @@ function loadExporter(fetch, timers = {}) {
   const context = {
     document, location: { search: '' }, URL, URLSearchParams, Uint8Array,
     AbortController, fetch, setTimeout: timers.setTimeout || setTimeout, clearTimeout: timers.clearTimeout || clearTimeout,
-    ArchiveFormat: { safeName: name => name }
+    ArchiveFormat: { safeName: name => name }, CheckpointStore: timers.store
   };
   vm.runInNewContext(instrumented, context);
   return context.mediaUnderTest;
@@ -124,4 +124,17 @@ test('video that responds after 40 seconds is not aborted by the image deadline'
   assert.equal(report.skippedMedia.length,0);
   assert.equal(files.size,1);
   assert.equal(attachment.localPath,'media/0001-video.mp4');
+});
+
+
+test('download is persisted before ZIP assembly and a storage failure stops further downloads', async () => {
+  const events=[];
+  const attachment={name:'photo',url:'https://i.oneme.ru/synthetic.jpg',downloadable:true,kind:'photo'};
+  const exporter=loadExporter(async()=>new Response(new Uint8Array([9,8]),{headers:{'content-type':'image/jpeg'}}),{store:{async file(id,url,value){events.push('persist');assert.equal(id,'checkpoint');assert.deepEqual([...value.bytes],[9,8]);}}});
+  await exporter.downloadMedia({add(){events.push('zip');}},{messages:[{attachments:[attachment]}]},'001-chat',{skippedMedia:[]},0,()=>{},'checkpoint');
+  assert.deepEqual(events,['persist','zip']);
+  let fetches=0;
+  const failing=loadExporter(async()=>{fetches++;return new Response(new Uint8Array([1]));},{store:{async file(){throw Error('QuotaExceededError');}}});
+  await assert.rejects(failing.downloadMedia({add(){assert.fail('must not assemble unsaved media');}},{messages:[{attachments:[attachment,{...attachment,url:'https://i.oneme.ru/other.jpg'}]}]},'001-chat',{skippedMedia:[]},0,()=>{},'checkpoint'),/QuotaExceededError/);
+  assert.equal(fetches,1);
 });

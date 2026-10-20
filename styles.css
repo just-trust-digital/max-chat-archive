@@ -2,3 +2,5 @@
 .list-actions{display:flex;gap:8px;margin:-7px 0 8px}.list-actions[hidden]{display:none}
 
 .visibility-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid #d7e3f7;border-radius:18px;padding:28px;color:#17223a;box-shadow:0 20px 80px #17223a40}.visibility-dialog::backdrop{background:#17223a99}.visibility-dialog h2{font-size:26px;margin:0 0 16px}.visibility-dialog p{line-height:1.55;color:#53647e}.visibility-dialog .actions{flex-wrap:wrap;margin-top:24px}.visibility-dialog button{min-height:48px;flex:1;white-space:normal}
+
+.recovery-panel{margin-top:16px}.recovery-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:14px 0;border-bottom:1px solid #e0e6f0}.recovery-row:last-child{border:0}.recovery-info{min-width:0;overflow-wrap:anywhere}.recovery-info small{display:block;color:#647189;line-height:1.5;margin-top:4px}.recovery-row .actions{flex-wrap:wrap}.recovery-row button{min-height:44px}@media(max-width:700px){.recovery-row{align-items:stretch;flex-direction:column}.recovery-row .actions button{flex:1}}

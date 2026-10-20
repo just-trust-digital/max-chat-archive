@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
-const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css']);
+const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css', '/test/recovery-layout.html', '/checkpoint.js', '/test/checkpoint-fixture.html', '/fixtures/checkpoint-browser.js']);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.css':'text/css; charset=utf-8' };
 const previewMedia = { '/test/media/photo.svg': 'fixtures/photo.svg', '/test/media/sample.webm': 'fixtures/sample.webm', '/test/media/sample.wav': 'fixtures/sample.wav', '/test/media/document.txt': 'fixtures/document.txt' };
 http.createServer(async (request, response) => {
