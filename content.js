@@ -351,7 +351,7 @@
     assertActive();
     let messages = snapshot();
     const initialCount = messages.length;
-    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, lastSteps: [] };
+    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, lastSteps: [] };
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let movedTowardHistory = false;
     if (!scroller) {
@@ -392,6 +392,16 @@
       progress({ title, count: messages.length, round, stage: 'history', limit: options.limit });
       if (messages.length === before && !moved && !replaced) stable++;
       else stable = 0;
+      if (stable >= 4 && messages.length === initialCount && history.restarts === 0) {
+        // A freshly opened chat can bind its history loader after the first
+        // scroll has reached the edge. Cross it again after initialization.
+        history.restarts++;
+        progress({ title, count: messages.length, stage: 'waiting' });
+        scroller.scrollTop = scroller.scrollHeight;
+        await wait(750);
+        stable = 0;
+        continue;
+      }
       if (stable >= 12) {
         if (movedTowardHistory && messages.length > initialCount) reachedTop = true;
         else reason = movedTowardHistory ? 'history_not_expanded' : 'scroll_stalled';

@@ -1,5 +1,5 @@
 (() => {
-  let connectListener, handleMessage, loaded = 30, phase = '', sequence = 0;
+  let connectListener, handleMessage, loaded = 30, phase = '', sequence = 0, delayedLoader = false;
   const jobs = new Map(), captures = [], photoCaptures = [], title = 'Синтетический чат';
   window.chrome = { runtime: { onConnect: { addListener(fn) { connectListener = fn; } } } };
   function check(value, message) { if (!value) throw new Error(message); }
@@ -41,9 +41,14 @@
       aside.replaceChildren();
       document.getElementById('chat').innerHTML = `<div class="openedChat"><div class="header"><div class="content--subtitle"><span class="title">${title}</span><span class="subtitle">1 of 22 online</span></div></div><div class="history"></div></div>`;
       const pane = document.querySelector('.history'); renderMessages(pane, 60, 90); pane.scrollTop = pane.scrollHeight;
-      let loading = false;
+      let loading = false, ready = !delayedLoader, edgeEligible = !delayedLoader, previousTop = pane.scrollTop;
+      pane.addEventListener('scroll', () => {
+        if (previousTop > 1 && pane.scrollTop <= 1) { edgeEligible = ready; ready = true; }
+        previousTop = pane.scrollTop;
+      });
       pane.addEventListener('wheel', event => {
         if (event.deltaY >= 0 || pane.scrollTop > 1 || loaded >= 90 || loading) return;
+        if (delayedLoader && !edgeEligible) return;
         loading = true;
         setTimeout(() => { const oldHeight = pane.scrollHeight; renderMessages(pane, 90 - loaded - 30, 90 - loaded, true); loaded += 30; pane.scrollTop += pane.scrollHeight - oldHeight; loading = false; }, 80);
       });
@@ -67,7 +72,8 @@
     const output = document.getElementById('result');
     try {
       connectListener(port); const results = [];
-      for (const limit of [100, 60]) {
+      for (const scenario of [{ limit: 100, delayed: true }, { limit: 60, delayed: false }]) {
+        const { limit } = scenario; delayedLoader = scenario.delayed;
         reset(); check(!document.querySelector('.openedChat'), 'Чат должен быть закрыт перед запуском');
         const discovery = await call('discover'); check(discovery.chats.length === 1, 'Чат не найден');
         const result = await call('export', { chat: discovery.chats[0], options: { limit, media: true, downloadMedia: true } });
@@ -81,9 +87,10 @@
         check(!document.querySelector('dialog[open]'), 'Просмотрщик фото остался открыт');
         check(result.messages.flatMap(item => item.attachments).every(item => item.downloadable && item.url), 'Адрес файла не получен');
         check(result.reason === (limit === 100 ? 'top' : 'message_limit'), 'Неверная причина завершения');
+        if (scenario.delayed) check(result.history.restarts === 1, 'Не выполнен повторный проход после позднего запуска загрузчика');
         const zip = new ZipArchive(); ArchiveFormat.add(zip, 'synthetic', result, 'html-json');
         const archiveBytes = (await zip.blob().arrayBuffer()).byteLength; check(archiveBytes > 1000, 'ZIP пуст');
-        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, fileClicks: captures.length, photos: photoCaptures.length, archiveBytes });
+        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, restarts: result.history.restarts, fileClicks: captures.length, photos: photoCaptures.length, archiveBytes });
       }
       output.dataset.status = 'passed'; output.textContent = JSON.stringify({ status: 'passed', scenarios: results }, null, 2);
     } catch (error) { output.dataset.status = 'failed'; output.textContent = error.stack || String(error); }

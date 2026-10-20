@@ -238,6 +238,29 @@ test('history loader receives an upward input notification at the top edge', asy
   assert.equal(result.history.lastSteps.at(-1).collected, 60);
 });
 
+test('history retries the first window when the loader binds after the initial edge crossing', async () => {
+  let top = 900, ready = false, mounted = 30;
+  const scroller = {
+    overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
+    get scrollTop() { return top; },
+    set scrollTop(value) {
+      const previous = top; top = Math.max(0, Math.min(900, value));
+      if (top === 0 && previous > 0) { if (ready) mounted = 60; else ready = true; }
+    }
+  };
+  const rows = Array.from({ length: 60 }, (_, index) => {
+    const row = messageRow({ text: `Сообщение ${index}` }); row.parentElement = scroller; return row;
+  });
+  const document = {
+    body: {}, title: 'MAX',
+    querySelector: selector => selector === '.openedChat' ? { querySelector: () => rows[60 - mounted] } : null,
+    querySelectorAll: () => rows.slice(60 - mounted)
+  };
+  const result = await loadContent(document, { instantWait: true }).exportOpen({ limit: 100 }, () => {});
+  assert.equal(result.messages.length, 60);
+  assert.equal(result.history.restarts, 1);
+});
+
 test('history reading reacquires a pane replaced during MAX rendering', async () => {
   let mounted = 30, top = 900, rows;
   const replacement = {
