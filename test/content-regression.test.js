@@ -7,7 +7,7 @@ const path = require('node:path');
 function loadContent(document, { instantWait = false, capture = null } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
   const instrumented = (instantWait ? source.replace('const wait = ms => new Promise(resolve => setTimeout(resolve, ms));', 'const wait = () => Promise.resolve();') : source)
-    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
+    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -65,6 +65,18 @@ test('date separator applies to following messages in the same day', () => {
   const rows = content.snapshot();
   assert.equal(rows[0].dateLabel, '18 октября 2026');
   assert.equal(rows[1].dateLabel, '18 октября 2026');
+});
+
+test('discovery returns to the chat list when compact MAX has unmounted its rows', async () => {
+  let opened = true;
+  const row = { getClientRects: () => [1], parentElement: null, innerText: 'Чат', querySelector: selector => selector === 'a[href]' ? null : { textContent: 'Чат' }, getAttribute: () => null };
+  const list = { clientHeight: 100, scrollHeight: 100, parentElement: null, get scrollTop() { return 0; }, set scrollTop(_value) {} };
+  const root = { querySelector: selector => selector.includes('Go back') ? { click() { opened = false; } } : null };
+  const document = { body: {}, querySelector: selector => selector === '.aside' ? list : selector === '.openedChat' && opened ? root : null, querySelectorAll: () => opened ? [] : [row] };
+  const result = await loadContent(document, { instantWait: true }).discover();
+  assert.equal(result.chats.length, 1);
+  assert.equal(opened, false);
+  assert.equal(result.complete, true);
 });
 
 test('sender header and message text are separated', () => {

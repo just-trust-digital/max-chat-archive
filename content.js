@@ -24,7 +24,23 @@
   function chatInfo(row) {
     return { key: rowKey(row), title: titleOf(row) || 'Чат без названия' };
   }
+  async function showChatList() {
+    if (visibleRows().length) return;
+    const back = document.querySelector('.openedChat')?.querySelector('button[aria-label="Go back"], button[aria-label="Назад"]');
+    if (!back) {
+      if (document.querySelector('.openedChat')) throw new Error('Список чатов скрыт. Вернитесь к списку в MAX и повторите поиск.');
+      return;
+    }
+    back.click();
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (cancelled) throw new Error('Остановлено пользователем.');
+      await wait(100);
+      if (visibleRows().length) return;
+    }
+    throw new Error('Список чатов не появился в MAX. Откройте раздел «Чаты» и повторите поиск.');
+  }
   async function discover() {
+    await showChatList();
     const list = document.querySelector('.aside');
     if (!list) throw new Error('Список чатов не найден. Откройте раздел «Чаты» в MAX.');
     const scroller = scrollParent(visibleRows()[0] || list) || list;
@@ -350,6 +366,7 @@
     return { title, messages, complete: reachedTop && gaps === 0 && messages.length < options.limit, reason: gaps ? 'possible_gaps' : reason, gaps, history };
   }
   async function openChat(info, progress = () => {}) {
+    await showChatList();
     const list = document.querySelector('.aside');
     if (!list) throw new Error('Список чатов исчез из MAX.');
     const scroller = scrollParent(visibleRows()[0] || list) || list;
