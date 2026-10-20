@@ -173,6 +173,7 @@
   async function saveZip(zip, filename) { await saveBlob(zip.blob(), filename); }
   async function run() {
     if (running) return;
+    let reportTabId = null;
     try {
       const selected = selection(), settings = options();
       if (!selected.length) throw new Error('Выберите хотя бы один чат.');
@@ -189,6 +190,10 @@
         return item;
       });
       await chrome.storage.local.set({ settings });
+      reportTabId = (await chrome.tabs.getCurrent())?.id ?? null;
+      // MAX needs an active tab: background timer throttling can consume the
+      // history deadline before even one screenful has been traversed.
+      await chrome.tabs.update(tabId, { active: true });
       const combinedZip = perChat ? null : new ZipArchive();
       const report = { exportedAt: new Date().toISOString(), extensionVersion: chrome.runtime.getManifest().version, source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
       for (let index = 0; index < selected.length; index++) {
@@ -243,9 +248,15 @@
           await saveZip(combinedZip, `max-archive-${new Date().toISOString().slice(0, 10)}.zip`);
         }
         note(`ZIP сохранён. Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}.`);
+        stage(stopped ? 'Экспорт остановлен' : 'Экспорт завершён');
       } else note(report.errors[0]?.error || 'Нет данных для архива.', true);
     } catch (error) { note(error.message, true); }
-    finally { running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; updateSelection(); }
+    finally {
+      running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; updateSelection();
+      if (reportTabId != null) {
+        try { await chrome.tabs.update(reportTabId, { active: true }); } catch { /* The report tab may have been closed. */ }
+      }
+    }
   }
   async function init() {
     try {
