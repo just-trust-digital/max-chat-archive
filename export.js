@@ -142,11 +142,12 @@
         const size = Number(response.headers.get('content-length'));
         if (size > 25 * 1024 * 1024) throw new Error('Файл больше 25 МБ');
         const bytes = await readLimited(response, controller, 25 * 1024 * 1024);
+        attachment.mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (bytes.length > 25 * 1024 * 1024 || total + bytes.length > 250 * 1024 * 1024) throw new Error('Превышен лимит размера');
         let name = ArchiveFormat.safeName(attachment.name || decodeURIComponent(url.pathname.split('/').pop()) || attachment.kind);
         if (!/\.[A-Za-z0-9]{1,6}$/.test(name)) {
           const type = response.headers.get('content-type') || '';
-          const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'video/mp4': '.mp4', 'audio/mpeg': '.mp3' }[type.split(';')[0]] || '';
+          const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/opus': '.opus', 'audio/webm': '.webm', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'application/pdf': '.pdf' }[type.split(';')[0].trim().toLowerCase()] || '';
           name += ext;
         }
         const localPath = `media/${String(used.size + 1).padStart(4, '0')}-${name}`;

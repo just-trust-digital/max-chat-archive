@@ -97,3 +97,12 @@ test('viewer photo is written as an image and unresolved photo is reported', asy
   assert.equal(report.skippedMedia.length, 1);
   assert.equal(report.skippedMedia[0].name, 'photo-2');
 });
+
+test('download records MIME type and creates a playable audio extension', async () => {
+  const exporter = loadExporter(async () => new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'audio/ogg; codecs=opus' } }));
+  const attachment = { name: 'voice', kind: 'audio', downloadable: true, url: 'https://fd.oneme.ru/file?id=voice' };
+  const files = new Map();
+  await exporter.downloadMedia({ add: (name, data) => files.set(name, data) }, { messages: [{ attachments: [attachment] }] }, 'chat', { skippedMedia: [] }, 0, () => {});
+  assert.equal(attachment.mimeType, 'audio/ogg');
+  assert.ok(files.has('chat/media/0001-voice.ogg'));
+});

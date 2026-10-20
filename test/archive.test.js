@@ -76,3 +76,34 @@ test('archive formats include the normalized date and sender', async () => {
   const content = new TextDecoder().decode(archiveBytes);
   assert.ok(content.includes('Екатерина Волкова · 2026-10-18 17:58'));
 });
+
+test('HTML groups days and embeds only downloaded media, with document links', () => {
+  let html;
+  const message = (dateLabel, attachments = []) => ({ dateLabel, time: '12:00', text: 'Сообщение', author: 'Автор', attachments, reactions: [] });
+  ArchiveFormat.add({ add(_name, value) { html = value; } }, 'chat', { title: 'Чат', messages: [
+    message('October 18, 2026', [
+      { kind: 'photo', name: 'Фото', localPath: 'media/photo #1.webp' },
+      { kind: 'file', mimeType: 'video/mp4', name: 'Ролик', localPath: 'media/video.mp4' },
+      { kind: 'audio', name: 'Голосовое', localPath: 'media/voice.ogg' },
+      { kind: 'audio', mimeType: 'audio/webm', name: 'Голосовое WebM', localPath: 'media/voice.webm' },
+      { kind: 'file', name: 'Документ.pdf', localPath: 'media/doc.pdf' },
+      { kind: 'photo', name: 'Не скачано', url: 'https://i.oneme.ru/remote.jpg' }
+    ]), message('October 18, 2026'), message('October 19, 2026'), message('')
+  ] }, 'html');
+  assert.equal((html.match(/class="day-separator"/g) || []).length, 3);
+  assert.match(html, /Дата неизвестна/);
+  assert.match(html, /<img[^>]+src="media\/photo%20%231.webp"/);
+  assert.match(html, /<video[^>]+controls/);
+  assert.match(html, /<audio[^>]+controls/);
+  assert.equal((html.match(/<audio /g) || []).length, 2);
+  assert.match(html, /href="media\/doc.pdf"/);
+  assert.doesNotMatch(html, /<img[^>]+src="https:/);
+  assert.match(html, /href="https:\/\/i.oneme.ru\/remote.jpg"/);
+});
+
+test('HTML never accepts executable or traversing attachment paths', () => {
+  let html;
+  const attachments = ['javascript:alert(1)', '../private.jpg', 'media/../private.jpg'].map(localPath => ({ kind: 'photo', localPath, name: '<script>bad</script>' }));
+  ArchiveFormat.add({ add(_name, value) { html = value; } }, 'chat', { title: 'Чат', messages: [{ time: '', text: '', attachments, reactions: [] }] }, 'html');
+  assert.doesNotMatch(html, /src="|href="|<script>/);
+});

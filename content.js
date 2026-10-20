@@ -117,7 +117,7 @@
   }
   function attachmentsOf(row) {
     const items = [];
-    for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src],button[aria-label="Скачать"]')) {
+    for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src],button[aria-label="Скачать"],button[aria-label="Download"]')) {
       if (element.closest?.('[class*="emoji"], [class*="Emoji"], [class*="reaction"], [class*="avatar"]')) continue;
       if (element.tagName.toLowerCase() === 'img' && element.closest?.(PHOTO_TILES)) continue;
       if (element.tagName.toLowerCase() === 'button') {
@@ -130,8 +130,8 @@
       let url;
       try { url = new URL(raw, location.href).href; } catch { continue; }
       const tag = element.tagName.toLowerCase();
-      const kind = tag === 'a' ? 'file-or-link' : tag;
-      items.push({ kind, url, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
+      const kind = tag === 'a' ? 'file-or-link' : tag === 'source' ? element.closest?.('audio, video')?.tagName.toLowerCase() || tag : tag;
+      items.push({ kind, url, mimeType: element.getAttribute('type') || undefined, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
     }
     photoTiles(row).forEach((_tile, index) => items.push({ kind: 'photo', url: null, downloadable: false, source: 'photo-tile', name: `photo-${index + 1}` }));
     return [...new Map(items.map((item, index) => [item.url || `button:${index}:${item.name}`, item])).values()];
@@ -237,7 +237,7 @@
     }
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     for (let index = 0; index < rows.length; index++) {
-      const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"]')];
+      const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"], button[aria-label="Download"]')];
       const files = items[index]?.attachments.filter(attachment => attachment.source === 'download-button') || [];
       const messageKey = items[index] && signature(items[index]);
       for (let fileIndex = 0; fileIndex < Math.min(buttons.length, files.length); fileIndex++) {

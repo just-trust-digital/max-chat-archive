@@ -147,6 +147,17 @@ test('photo tiles with data placeholders are retained as pending photos', () => 
   assert.equal(photos[0].url, null);
 });
 
+test('audio and video sources retain their media type', () => {
+  const elements = ['audio', 'video'].map(kind => ({
+    tagName: 'SOURCE', textContent: '', hasAttribute: () => false,
+    getAttribute: name => name === 'src' ? `https://i.oneme.ru/${kind}` : name === 'type' ? `${kind}/webm` : null,
+    closest: selector => selector === 'audio, video' ? { tagName: kind.toUpperCase() } : null
+  }));
+  const rows = loadContent({}).attachmentsOf({ querySelectorAll: selector => selector.includes('button.tile') ? [] : elements });
+  assert.deepEqual(Array.from(rows, item => item.kind), ['audio', 'video']);
+  assert.equal(rows[0].mimeType, 'audio/webm');
+});
+
 test('export waits for a scrollable history before treating 30 visible messages as the archive', async () => {
   const scroller = { overflowY: 'auto', scrollHeight: 90, clientHeight: 90, scrollTop: 0, parentElement: null };
   const rows = Array.from({ length: 100 }, (_, index) => {

@@ -47,8 +47,34 @@ const ArchiveFormat = (() => {
     }));
   }
   function html(chat) {
-    const blocks = chat.messages.map(item => `<article class="msg ${item.direction === 'out' ? 'out' : ''}"><div class="meta">${escape(item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник'))} · ${escape(item.date || item.dateLabel)} ${escape(item.time)}</div><div class="body">${escape(item.text).replace(/\n/g, '<br>')}</div>${item.attachments.map(entry => { const url = entry.localPath ? encodeURI(entry.localPath.replace(/^.*?\/media\//, 'media/')) : safeUrl(entry.url); return url ? `<div class="attachment"><a href="${escape(url)}">${escape(entry.name || entry.kind)}</a></div>` : `<div class="attachment">${escape(entry.name || entry.kind)}</div>`; }).join('')}${item.reactions.length ? `<div class="reactions">${escape(item.reactions.join(' · '))}</div>` : ''}</article>`).join('');
-    return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(chat.title)}</title><style>body{font:15px/1.5 Arial,sans-serif;background:#f2f5fa;color:#17233a;margin:0;padding:24px}.wrap{max-width:850px;margin:auto}h1{font-size:25px}.msg{background:white;border:1px solid #dce3ed;border-radius:13px;margin:12px 15% 12px 0;padding:13px}.msg.out{margin:12px 0 12px 15%;background:#e9f3ff}.meta,.reactions{color:#6d7b91;font-size:12px}.body{white-space:normal;margin-top:7px}.attachment{margin-top:8px;overflow-wrap:anywhere}a{color:#1563dc}</style></head><body><div class="wrap"><h1>${escape(chat.title)}</h1><p>${chat.messages.length} сообщений</p>${blocks}</div></body></html>`;
+    function attachment(entry) {
+      const name = escape(entry.name || entry.kind || 'Файл');
+      const path = String(entry.localPath || '').replace(/^.*?\/media\//, 'media/');
+      const local = path.startsWith('media/') && !path.split('/').some(part => part === '..' || part === '.') && !/[\\\x00-\x1f]/.test(path)
+        ? path.split('/').map(encodeURIComponent).join('/') : '';
+      const url = local || safeUrl(entry.url);
+      if (!url) return `<div class="attachment">${name} — файл недоступен</div>`;
+      const href = escape(url);
+      const type = String(entry.mimeType || '').toLowerCase();
+      const extension = path.split('.').pop().toLowerCase();
+      let preview = '';
+      // Remote URLs remain links: an offline archive never contacts MAX merely
+      // because the reader opened its HTML file.
+      if (local) {
+        if (['photo', 'img', 'image', 'sticker'].includes(entry.kind) || type.startsWith('image/') || /^(jpe?g|png|webp|gif|avif|bmp|svg)$/.test(extension)) preview = `<a class="preview" href="${href}"><img src="${href}" alt="${name}" loading="lazy" decoding="async"></a>`;
+        else if (entry.kind !== 'audio' && !type.startsWith('audio/') && (entry.kind === 'video' || type.startsWith('video/') || /^(mp4|webm|mov|m4v)$/.test(extension))) preview = `<video src="${href}" controls preload="none" playsinline aria-label="${name}"></video>`;
+        else if (entry.kind === 'audio' || type.startsWith('audio/') || /^(mp3|ogg|opus|wav|m4a|aac|flac)$/.test(extension)) preview = `<audio src="${href}" controls preload="none" aria-label="${name}"></audio>`;
+      }
+      return `<div class="attachment">${preview}<a class="file-link" href="${href}" rel="noreferrer">${name}</a></div>`;
+    }
+    let previousDay = null;
+    const blocks = chat.messages.map(item => {
+      const date = dateOf(item), day = date || item.dateLabel || 'Дата неизвестна';
+      const separator = day !== previousDay ? `<h2 class="day-separator">${escape(date ? date.split('-').reverse().join('.') : day)}</h2>` : '';
+      previousDay = day;
+      return `${separator}<article class="msg ${item.direction === 'out' ? 'out' : ''}"><div class="meta">${escape(item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник'))} · ${escape(date || item.dateLabel)} ${escape(item.time)}</div><div class="body">${escape(item.text).replace(/\n/g, '<br>')}</div>${(item.attachments || []).map(attachment).join('')}${item.reactions?.length ? `<div class="reactions">${escape(item.reactions.join(' · '))}</div>` : ''}</article>`;
+    }).join('');
+    return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(chat.title)}</title><style>*{box-sizing:border-box}body{font:15px/1.5 Arial,sans-serif;background:#f2f5fa;color:#17233a;margin:0;padding:24px}.wrap{max-width:850px;margin:auto;overflow-wrap:anywhere}h1{font-size:25px}.day-separator{font-size:14px;font-weight:600;text-align:center;color:#526178;margin:28px 0 16px}.msg{background:white;border:1px solid #dce3ed;border-radius:13px;margin:12px 15% 12px 0;padding:13px;min-width:0}.msg.out{margin:12px 0 12px 15%;background:#e9f3ff}.meta,.reactions{color:#526178;font-size:12px}.body{white-space:normal;margin-top:7px}.attachment{margin-top:12px;min-width:0}.attachment img,.attachment video{display:block;max-width:100%;max-height:480px;height:auto;border-radius:6px}.attachment audio{display:block;width:100%;max-width:420px}.preview{display:block;width:fit-content;max-width:100%}.file-link{display:inline-block;max-width:100%;padding:6px 0;overflow-wrap:anywhere}a{color:#1563dc}a:focus-visible,audio:focus-visible,video:focus-visible{outline:2px solid #1563dc;outline-offset:4px}@media(max-width:600px){body{padding:12px}.msg{margin-right:5%}.msg.out{margin-left:5%}.attachment img,.attachment video{max-height:360px}}</style></head><body><div class="wrap"><h1>${escape(chat.title)}</h1><p>${chat.messages.length} сообщений</p>${blocks}</div></body></html>`;
   }
   function txt(chat) { return `${chat.title}\n${chat.messages.length} сообщений\n\n${chat.messages.map(item => `[${item.date || item.dateLabel} ${item.time}] ${item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник')}\n${item.text}${item.attachments.length ? '\n' + item.attachments.map(a => `${a.name || a.kind}: ${a.localPath || a.url || 'ссылка недоступна'}`).join('\n') : ''}`).join('\n\n')}`; }
   function csv(chat) { return '\ufeff' + ['date', 'time', 'author', 'direction', 'text', 'attachments', 'reactions'].map(csvCell).join(',') + '\r\n' + chat.messages.map(item => [item.date || item.dateLabel, item.time, item.author, item.direction, item.text, item.attachments.map(a => a.localPath || a.url || a.name).join(' | '), item.reactions.join(' | ')].map(csvCell).join(',')).join('\r\n'); }
