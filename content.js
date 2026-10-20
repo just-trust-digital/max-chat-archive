@@ -139,17 +139,18 @@
   function extract(row, dateLabel) {
     const message = row.querySelector('.message') || row;
     const textNode = message.querySelector('.bubbleContent') || message;
-    const textParts = [...(textNode.querySelectorAll?.('.text') || [])].map(element => element.innerText?.trim() || element.textContent?.trim() || '').filter(Boolean);
+    const textParts = [...(textNode.querySelectorAll?.('.text') || [])].filter(element => !element.closest?.('.header, .meta, time, .reactions')).map(element => element.innerText?.trim() || element.textContent?.trim() || '').filter(Boolean);
     let body = textParts.join('\n');
     if (!body && textNode.cloneNode) {
       const copy = textNode.cloneNode(true);
       copy.querySelectorAll('.header, .meta, time, .reactions, [class*="emoji"], [class*="media"], button[aria-label="Скачать"]').forEach(element => element.remove());
       body = copy.innerText?.trim() || copy.textContent?.trim() || '';
     }
-    if (!body) body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
+    if (!body && !textNode.cloneNode) body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
     const time = message.querySelector('time')?.getAttribute('datetime') || message.querySelector('time, [class*="meta"]')?.textContent?.trim() || '';
     const authorElement = row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
-    const author = authorElement?.innerText?.trim() || authorElement?.textContent?.trim() || '';
+    const authorName = authorElement?.querySelector?.('.name') || authorElement;
+    const author = authorName?.innerText?.trim() || authorName?.textContent?.trim() || '';
     const reactions = [...row.querySelectorAll('[class*="reactions"] [class*="reaction"]')].map(el => el.textContent.trim()).filter(Boolean);
     const attachments = attachmentsOf(row);
     return { dateLabel, time, author, direction: row.classList.contains('messageWrapper--isOut') ? 'out' : 'in', text: body, reactions, attachments };

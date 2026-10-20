@@ -116,6 +116,27 @@ test('sender header and message text are separated', () => {
   assert.equal(result.text, 'Добрый вечер');
 });
 
+test('nested header and meta text do not become message body', () => {
+  const row = messageRow();
+  const body = { innerText: 'Здравствуйте', closest: () => null };
+  const header = { innerText: 'Анна', closest: () => ({}) };
+  const time = { innerText: '01:52 PM ред.', closest: () => ({}) };
+  const bubble = { querySelectorAll: () => [header, body, time] };
+  const message = row.querySelector('.message');
+  const original = message.querySelector;
+  message.querySelector = selector => selector === '.bubbleContent' ? bubble : original(selector);
+  assert.equal(loadContent({}).extract(row, 'October 18, 2026').text, 'Здравствуйте');
+});
+
+test('photo-only message stays empty after metadata is removed', () => {
+  const row = messageRow();
+  const bubble = { innerText: '04:19 PM', querySelectorAll: () => [], cloneNode: () => ({ innerText: '', textContent: '', querySelectorAll: () => [] }) };
+  const message = row.querySelector('.message');
+  const original = message.querySelector;
+  message.querySelector = selector => selector === '.bubbleContent' ? bubble : original(selector);
+  assert.equal(loadContent({}).extract(row, '').text, '');
+});
+
 test('file button is captured while emoji image is ignored', () => {
   const emoji = {
     tagName: 'IMG', textContent: '',

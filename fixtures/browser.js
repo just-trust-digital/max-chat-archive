@@ -6,8 +6,13 @@
   function renderMessages(pane, from, to, prepend = false) {
     const fragment = document.createDocumentFragment();
     for (let index = from; index < to; index++) {
+      if (index % 30 === 0) {
+        const day = document.createElement('div'); day.className = 'item';
+        day.innerHTML = `<div class="capsuleSeparator"><span class="capsule">October ${18 + index / 30}, 2026</span></div>`;
+        fragment.append(day);
+      }
       const row = document.createElement('div'); row.className = 'messageWrapper';
-      row.innerHTML = `<div class="message"><div class="bubbleContent"><span class="text">Сообщение ${index}</span></div><time datetime="2026-10-19T12:00:00">12:00</time></div>`;
+      row.innerHTML = `<div class="message"><div class="bubbleContent"><div class="header"><button class="header"><span class="name"><span class="text">Автор</span></span></button></div><span class="text">Сообщение ${index}</span><div class="meta"><span class="text">12:00</span></div></div><time>12:00</time></div>`;
       if (index === 0 || index === 89) {
         const button = document.createElement('button'); button.setAttribute('aria-label', 'Скачать'); button.innerHTML = `<span class="title">file-${index}.pdf</span>`;
         button.addEventListener('click', () => {
@@ -30,7 +35,9 @@
           document.body.append(viewer); viewer.showModal();
         }); row.append(grid);
       }
-      fragment.append(row);
+      const outer = document.createElement('div'); outer.className = 'item';
+      const block = document.createElement('div'); block.className = 'block'; block.setAttribute('role', 'listitem');
+      block.append(row); outer.append(block); fragment.append(outer);
     } if (prepend) pane.prepend(fragment); else pane.append(fragment);
   }
   function reset() {
@@ -83,6 +90,10 @@
         check(result.messages.length === expected, `Ожидалось ${expected}, получено ${result.messages.length}`);
         check(result.messages[0].text === `Сообщение ${90 - expected}`, 'Неверное начало истории');
         check(result.messages.at(-1).text === 'Сообщение 89', 'Потеряно последнее сообщение');
+        check(result.messages.every(item => /^October \d+, 2026$/.test(item.dateLabel)), 'Потеряны разделители дней MAX');
+        check(result.messages.every(item => item.author === 'Автор'), 'Имя отправителя не отделено от текста');
+        const dayMessages = ArchiveFormat.filter(result.messages, { from: '2026-10-19', to: '2026-10-19', media: true });
+        check(dayMessages.length === 30, 'Фильтр дат не выбрал сообщения за 19 октября');
         check(captures.every(item => item.phase === 'resolving'), 'Файл нажат до окончания загрузки истории');
         check(captures.length === (limit === 100 ? 2 : 1), 'Неверное число файлов');
         check(photoCaptures.length === 1 && photoCaptures[0].phase === 'resolving', 'Фото не получено после загрузки истории');
