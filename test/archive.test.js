@@ -52,6 +52,18 @@ test('date parser recognizes Russian MAX-style separators', () => {
   assert.match(ArchiveFormat.dateOf({ dateLabel: '24 сентября' }), /^\d{4}-09-24$/);
 });
 
+test('English MAX dates and relative days are recognized for filtering', () => {
+  assert.equal(ArchiveFormat.dateOf({ dateLabel: 'October 18, 2026' }), '2026-10-18');
+  assert.equal(ArchiveFormat.dateOf({ dateLabel: '18 October 2026' }), '2026-10-18');
+  assert.equal(ArchiveFormat.dateOf({ dateLabel: 'Today' }), ArchiveFormat.dateOf({ dateLabel: 'Сегодня' }));
+  assert.equal(ArchiveFormat.dateOf({ dateLabel: 'Yesterday' }), ArchiveFormat.dateOf({ dateLabel: 'Вчера' }));
+  const result = ArchiveFormat.filter([
+    { dateLabel: 'October 14, 2026', attachments: [] },
+    { dateLabel: 'October 18, 2026', attachments: [] }
+  ], { from: '2026-10-18', to: '2026-10-18', media: true });
+  assert.equal(result.length, 1);
+});
+
 test('archive formats include the normalized date and sender', async () => {
   const messages = ArchiveFormat.filter([{
     dateLabel: '18 октября 2026', time: '17:58', author: 'Екатерина Волкова',

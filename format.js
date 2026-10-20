@@ -8,6 +8,7 @@ const ArchiveFormat = (() => {
     return `"${cell.replace(/"/g, '""')}"`;
   };
   const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   const iso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   function dateOf(item) {
     if (item.date && /^\d{4}-\d{2}-\d{2}$/.test(item.date)) return item.date;
@@ -17,8 +18,10 @@ const ArchiveFormat = (() => {
       if (standard) return standard[0];
       const dotted = label.match(/\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);
       if (dotted) return `${dotted[3]}-${dotted[2].padStart(2, '0')}-${dotted[1].padStart(2, '0')}`;
-      if (label === 'сегодня') return iso(new Date());
-      if (label === 'вчера') { const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); return iso(yesterday); }
+      if (label === 'сегодня' || label === 'today') return iso(new Date());
+      if (label === 'вчера' || label === 'yesterday') { const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); return iso(yesterday); }
+      const english = label.match(/^([a-z]+)\s+(\d{1,2}),?\s+(\d{4})$/) || label.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/)?.map((value, index, values) => index === 1 ? values[2] : index === 2 ? values[1] : value);
+      if (english && englishMonths.includes(english[1])) return `${english[3]}-${String(englishMonths.indexOf(english[1]) + 1).padStart(2, '0')}-${english[2].padStart(2, '0')}`;
       const russian = label.match(/\b(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?/u);
       if (russian && months.includes(russian[2])) {
         const month = months.indexOf(russian[2]);

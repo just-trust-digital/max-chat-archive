@@ -85,6 +85,17 @@ test('date separator applies to following messages in the same day', () => {
   assert.equal(rows[1].dateLabel, '18 октября 2026');
 });
 
+test('MAX capsule dates are found in preceding outer items, skipping New messages', () => {
+  const separator = { previousElementSibling: null, querySelector: () => ({ textContent: 'October 18, 2026' }) };
+  const previousMessage = { previousElementSibling: separator, querySelector: () => null };
+  const unread = { previousElementSibling: previousMessage, querySelector: () => ({ textContent: 'New messages' }) };
+  const container = { previousElementSibling: unread, querySelector: () => null };
+  const row = messageRow();
+  row.closest = selector => selector === '.item' ? container : null;
+  const result = loadContent({ querySelectorAll: () => [row] }).snapshot();
+  assert.equal(result[0].dateLabel, 'October 18, 2026');
+});
+
 test('discovery returns to the chat list when compact MAX has unmounted its rows', async () => {
   let opened = true, returned = 0;
   const row = { getClientRects: () => [1], parentElement: null, innerText: 'Чат', querySelector: selector => selector === 'a[href]' ? null : selector === '.cell' ? { click() { opened = true; } } : { textContent: 'Чат' }, getAttribute: () => null };

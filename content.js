@@ -158,6 +158,15 @@
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     let dateLabel = '';
     return rows.map(row => {
+      // MAX renders day capsules as siblings of the outer .item, rather
+      // than siblings of .messageWrapper inside its role=listitem block.
+      let outer = row.closest('.item');
+      while (outer) {
+        const capsule = outer.querySelector?.('.capsuleSeparator .capsule');
+        const label = capsule?.textContent?.trim() || '';
+        if (/^(?:today$|yesterday$|сегодня$|вчера$|\d{1,4}[\s.-]|[a-z]+\s+\d{1,2},?\s+\d{4}$)/i.test(label)) { dateLabel = label; break; }
+        outer = outer.previousElementSibling;
+      }
       const item = row.closest('[role="listitem"]');
       const candidate = item?.querySelector?.('.dateSeparator .date, .dateSeparator') || item?.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator') || row.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator');
       if (candidate) dateLabel = candidate.textContent?.trim() || dateLabel;
