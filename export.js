@@ -136,7 +136,8 @@
         if (url.protocol !== 'https:' || !mediaHost) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= 250 * 1024 * 1024) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
-        timer = setTimeout(() => controller.abort(), 30000);
+        const video = attachment.kind === 'video' || attachment.mimeType?.startsWith('video/') || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
+        timer = setTimeout(() => controller.abort(), video ? 120000 : 30000);
         const response = await fetch(url.href, { credentials: 'include', signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const size = Number(response.headers.get('content-length'));

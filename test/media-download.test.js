@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function loadExporter(fetch) {
+function loadExporter(fetch, timers = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'export.js'), 'utf8');
   const instrumented = source.replace(/\binit\(\);\s*\}\)\(\);\s*$/, 'globalThis.mediaUnderTest = { downloadMedia, readLimited };})();');
   assert.notEqual(instrumented, source);
@@ -14,7 +14,7 @@ function loadExporter(fetch) {
   };
   const context = {
     document, location: { search: '' }, URL, URLSearchParams, Uint8Array,
-    AbortController, fetch, setTimeout, clearTimeout,
+    AbortController, fetch, setTimeout: timers.setTimeout || setTimeout, clearTimeout: timers.clearTimeout || clearTimeout,
     ArchiveFormat: { safeName: name => name }
   };
   vm.runInNewContext(instrumented, context);
@@ -105,4 +105,23 @@ test('download records MIME type and creates a playable audio extension', async 
   await exporter.downloadMedia({ add: (name, data) => files.set(name, data) }, { messages: [{ attachments: [attachment] }] }, 'chat', { skippedMedia: [] }, 0, () => {});
   assert.equal(attachment.mimeType, 'audio/ogg');
   assert.ok(files.has('chat/media/0001-voice.ogg'));
+});
+
+test('video that responds after 40 seconds is not aborted by the image deadline', async () => {
+  const scheduled=[];
+  const timers={setTimeout(fn,ms){const task={fn,ms,active:true};scheduled.push(task);return task;},clearTimeout(task){if(task)task.active=false;}};
+  const exporter=loadExporter((_url,{signal})=>new Promise((resolve,reject)=>{
+    signal.addEventListener('abort',()=>{const error=new Error('aborted');error.name='AbortError';reject(error);});
+    timers.setTimeout(()=>resolve(new Response(new Uint8Array([1,2,3]),{headers:{'content-type':'video/mp4'}})),40000);
+  }),timers);
+  const attachment={kind:'video',name:'video',downloadable:true,url:'https://maxvd640.okcdn.ru/video'};
+  const files=new Map(),report={skippedMedia:[]};
+  const work=exporter.downloadMedia({add:(name,data)=>files.set(name,data)},{messages:[{attachments:[attachment]}]},'chat',report,0,()=>{});
+  for(const task of scheduled.filter(task=>task.ms<=45000).sort((a,b)=>a.ms-b.ms)){
+    if(task.active)task.fn();await Promise.resolve();
+  }
+  await work;
+  assert.equal(report.skippedMedia.length,0);
+  assert.equal(files.size,1);
+  assert.equal(attachment.localPath,'media/0001-video.mp4');
 });
