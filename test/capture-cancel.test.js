@@ -14,7 +14,7 @@ test('stop interrupts a pending file address capture and clears its timers', asy
       if (data.type === 'arm') for (const fn of listeners) fn({ source: window, origin: 'https://web.max.ru', data: { ...data, type: 'ready' } });
     }
   };
-  const source = fs.readFileSync(require.resolve('../content.js'), 'utf8').replace(/\}\)\(\);\s*$/, 'globalThis.capture = captureButton;})();');
+  const source = fs.readFileSync(require.resolve('../content.js'), 'utf8').replace(/\}\)\(\);\s*$/, 'globalThis.capture = captureButton; globalThis.own = port => { activeOperation = {port}; };})();');
   const context = {
     window, location: { origin: 'https://web.max.ru' }, crypto: { randomUUID: () => 'nonce' },
     setTimeout(fn) { const id = ++nextTimer; timers.set(id, fn); return id; },
@@ -22,7 +22,8 @@ test('stop interrupts a pending file address capture and clears its timers', asy
     chrome: { runtime: { onConnect: { addListener(fn) { connect = fn; } } } }
   };
   vm.runInNewContext(source, context);
-  connect({ name: 'max-export', onMessage: { addListener(fn) { receive = fn; } } });
+  const port = { name: 'max-export', onMessage: { addListener(fn) { receive = fn; } } };
+  connect(port); context.own(port);
   const captured = context.capture({ click() { clicks++; } });
   assert.equal(clicks, 1);
   assert.equal(timers.size, 2);

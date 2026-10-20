@@ -51,7 +51,7 @@
       return;
     }
     back.click();
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 120; attempt++) {
       if (cancelled) throw new Error('Остановлено пользователем.');
       await wait(100);
       if (visibleRows().length) return;
@@ -224,27 +224,31 @@
       window.postMessage({ marker, type: 'arm', nonce }, location.origin);
     });
   }
-  async function capturePhoto(tile, assertActive) {
+  async function capturePhoto(tile, assertActive, progress = () => {}) {
     if (document.querySelector('dialog[open]')) return {error: 'viewer_already_open'};
     let viewer = null;
     try {
       assertActive();
-      await waitForVisible(() => {}, openedTitle(), 0);
+      await waitForVisible(progress, openedTitle(), 0);
       tile.scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
       await wait(250); if (cancelled) return null; assertActive();
       tile.click();
-      for (let attempt = 0; attempt < 50; attempt++) {
+      for (let attempt = 0; attempt < 120; attempt++) {
         if (cancelled) return null;
+        if (document.visibilityState === 'hidden') await waitForVisible(progress, 'MAX', 0);
         await wait(100); assertActive();
         viewer = document.querySelector('dialog[open]');
         const video = viewer?.querySelector('video');
         const videoUrl = video?.currentSrc || video?.getAttribute?.('src') || video?.querySelector?.('source[src]')?.getAttribute('src');
         if (videoUrl && /^https?:\/\//i.test(videoUrl)) return {kind: 'video', url: videoUrl, quality: 'viewer'};
-        const image = viewer && [...viewer.querySelectorAll('img[src]')].find(img => !img.closest('[class*="avatar"]') && /^https?:\/\//i.test(img.currentSrc || img.getAttribute('src') || ''));
-        if (!image) continue;
-        return { url: image.currentSrc || image.getAttribute('src'), quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
+        const candidates = viewer ? [...viewer.querySelectorAll('img[src]')].filter(img => !img.closest('[class*="avatar"]')).map(image => ({image, url: [image.currentSrc, image.getAttribute?.('src')].find(url => /^https:\/\//i.test(url || ''))})).filter(item => item.url) : [];
+        const candidate = candidates.sort((a,b) => (b.image.naturalWidth || 0) - (a.image.naturalWidth || 0))[0];
+        if (!candidate) continue;
+        const image = candidate.image;
+        return { url: candidate.url, quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
       }
-      return {error: viewer ? 'viewer_image_unavailable' : 'viewer_not_opened'};
+      const images = viewer ? [...viewer.querySelectorAll('img[src]')] : [];
+      return {error: viewer ? 'viewer_image_unavailable' : 'viewer_not_opened', diagnostics:{imageCount:images.length, sources:images.map(image => ({srcScheme:(image.getAttribute?.('src') || '').split(':')[0], currentScheme:(image.currentSrc || '').split(':')[0], avatar:!!image.closest('[class*="avatar"]')}))}};
     } finally {
       const close = viewer?.querySelector('button[aria-label="Close"], button[aria-label="Закрыть"]');
       if (close) { close.click(); await wait(50); }
@@ -275,7 +279,7 @@
       const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"], button[aria-label="Download"]')];
       const files = items[index]?.attachments.filter(attachment => attachment.source === 'download-button') || [];
       if (!cache.rowIds.has(rows[index])) cache.rowIds.set(rows[index], ++cache.nextRowId);
-      const messageKey = `row:${cache.rowIds.get(rows[index])}`;
+      const messageKey = items[index]._captureKey || `row:${cache.rowIds.get(rows[index])}`;
       for (let fileIndex = 0; fileIndex < Math.min(buttons.length, files.length); fileIndex++) {
         if (cancelled) return items;
         const key = `${messageKey}:${fileIndex}`;
@@ -297,11 +301,11 @@
         assertActive();
         const key = `${messageKey}:photo:${photoIndex}`;
         if (!cache.has(key)) {
-          await resolveFile(key, photos[photoIndex].name, () => capturePhoto(tiles[photoIndex], assertActive));
+          await resolveFile(key, photos[photoIndex].name, () => capturePhoto(tiles[photoIndex], assertActive, progress));
         }
         const captured = cache.get(key);
         if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
-        else photos[photoIndex].resolutionError = captured?.error || 'photo_url_unavailable';
+        else { photos[photoIndex].resolutionError = captured?.error || 'photo_url_unavailable'; if(captured?.diagnostics) photos[photoIndex].resolutionDiagnostics=captured.diagnostics; }
       }
     }
     return items;
@@ -363,7 +367,8 @@
       targets.get(key).push(message);
     }
     const neededMessages = targets.size, cache = new Map();
-    const fileTotal = [...targets.values()].reduce((sum, copies) => sum + copies[0].attachments.filter(item => item.source === 'download-button' || item.source === 'photo-tile').length, 0);
+    const fileTotal = [...targets.values()].flat().reduce((sum, copy) => sum + copy.attachments.filter(item => item.source === 'download-button' || item.source === 'photo-tile').length, 0);
+    const captureIds = new Map(messages.map((item,index) => [item, `message:${index}`]));
     let scrollAttempts = 0, stable = 0;
     if (!targets.size || cancelled) return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
     progress({ title, count: messages.length, stage: 'resolving', fileCount: 0, fileTotal });
@@ -376,13 +381,19 @@
       const visible = snapshot();
       const keys = visible.map(mediaKey);
       // Keep row indexes aligned while resolving only files included by the history limit.
-      const wanted = visible.map((item, index) => targets.has(keys[index]) ? item : { ...item, attachments: [] });
-      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal }), title, assertActive);
+      const occurrences = new Map();
+      const wanted = visible.map((item, index) => {
+        const key = keys[index], occurrence = occurrences.get(key) || 0;
+        occurrences.set(key, occurrence + 1);
+        const copy = targets.get(key)?.[occurrence];
+        return copy ? {...item, _captureKey:captureIds.get(copy)} : {...item, attachments:[]};
+      });
+      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length, fileTotal: Math.max(fileTotal, cache.size) }), title, assertActive);
       assertActive();
       const before = targets.size;
       for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
         const item = wanted[itemIndex], key = keys[itemIndex], copies = targets.get(key);
-        if (!copies) continue;
+        if (!copies || !item._captureKey) continue;
         const copy = copies.shift();
         copy.attachments = item.attachments.map(attachment => ({...attachment}));
         if (!copies.length) targets.delete(key);
@@ -507,7 +518,7 @@
         if (!cell) throw new Error(`Строка чата «${info.title}» изменилась в MAX. Обновите список.`);
         progress({ title: info.title, count: 0, stage: 'opening' });
         cell.click();
-        for (let attempt = 0; attempt < 50; attempt++) {
+        for (let attempt = 0; attempt < 120; attempt++) {
           if (cancelled) throw new Error('Остановлено пользователем.');
           await wait(200);
           const root = document.querySelector('.openedChat');
@@ -528,12 +539,18 @@
     throw new Error(`Чат «${info.title}» не найден в текущем списке.`);
   }
 
+  let activeOperation = null;
   chrome.runtime.onConnect.addListener(port => {
     if (port.name !== 'max-export') return;
+    port.onDisconnect?.addListener(() => { if (activeOperation?.port === port) { cancelled = true; for (const cancel of captureCancellations) cancel(); } });
     port.onMessage.addListener(async message => {
+      let ownsOperation = false;
       try {
-        if (message.type === 'cancel') { cancelled = true; for (const cancelCapture of captureCancellations) cancelCapture(); return; }
-        cancelled = false;
+        if (message.type === 'cancel') { if (activeOperation?.port !== port) return; cancelled = true; for (const cancelCapture of captureCancellations) cancelCapture(); return; }
+        if (message.type === 'export' || message.type === 'discover') {
+          if (activeOperation) { const error = new Error('В этой вкладке MAX уже выполняется экспорт или поиск чатов. Остановите его перед новым запуском.'); error.code='EXPORT_BUSY'; throw error; }
+          activeOperation = {port, id:message.id}; ownsOperation = true; cancelled = false;
+        }
         if (message.type === 'discover') port.postMessage({ type: 'result', id: message.id, value: await discover() });
         if (message.type === 'current') port.postMessage({ type: 'result', id: message.id, value: { title: openedTitle() } });
         if (message.type === 'export') {
@@ -547,7 +564,8 @@
           }
           port.postMessage({ type: 'result', id: message.id, value: { ...result, messages: [] } });
         }
-      } catch (error) { port.postMessage({ type: 'error', id: message.id, error: error.message, code: error.code }); }
+      } catch (error) { try { port.postMessage({ type: 'error', id: message.id, error: error.message, code: error.code }); } catch {} }
+      finally { if (ownsOperation) activeOperation = null; }
     });
   });
 })();

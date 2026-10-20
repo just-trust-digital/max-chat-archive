@@ -174,7 +174,7 @@
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
       if (attachment.source === 'download-button') report.skippedMedia.push({ name: attachment.name, reason: 'Веб-версия не показывает прямой адрес файла' });
-      if (attachment.source === 'photo-tile') report.skippedMedia.push({ name: attachment.name, reason: 'Не удалось получить фотографию из просмотрщика MAX', detail: attachment.resolutionError || 'message_not_revisited' });
+      if (attachment.source === 'photo-tile') report.skippedMedia.push({ name: attachment.name, reason: 'Не удалось получить фотографию из просмотрщика MAX', detail: attachment.resolutionError || 'message_not_revisited', diagnostics: attachment.resolutionDiagnostics });
     }
     return total;
   }
@@ -219,7 +219,7 @@
           const result = await call('export', { chat: info, options: settings }, value => {
             visibilityPrompt(value.stage === 'visibility');
             const phase = value.stage === 'visibility' ? 'Ожидание показа MAX — откройте вкладку MAX' : value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
-            const files = value.stage === 'resolving' ? `; обработано вложений ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
+            const files = value.stage === 'resolving' ? `; получение адресов: ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
             stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${files}`, value.stage === 'resolving' ? value.fileCount : null, value.fileTotal);
             rows[index].textContent = `${value.title} — ${phase[0].toLowerCase() + phase.slice(1)}, ${value.count} сообщений`;
           });
@@ -233,7 +233,7 @@
           if (settings.media && settings.downloadMedia && !stopped) {
             rows[index].textContent = `${result.title} — загрузка вложений`;
             const total = await downloadMedia(zip, result, path, report, perChat ? 0 : report.mediaBytes, (done, count) => {
-              stage(`Чат ${index + 1} из ${selected.length}: вложения ${done} из ${count}`, done, count);
+              stage(`Чат ${index + 1} из ${selected.length}: скачивание файлов ${done} из ${count}`, done, count);
             });
             chatMediaBytes = perChat ? total : total - report.mediaBytes;
             report.mediaBytes += chatMediaBytes;

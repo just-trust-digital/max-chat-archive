@@ -445,7 +445,7 @@ test('history reading reacquires a pane replaced during MAX rendering', async ()
 
 test('file resolution starts after history loading and revisits virtualized messages', async () => {
   let top = 900, olderLoaded = false;
-  const phases = [], captures = [];
+  const phases = [], captures = [], progressValues = [];
   const scroller = {
     overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,
     get scrollTop() { return top; },
@@ -469,13 +469,17 @@ test('file resolution starts after history loading and revisits virtualized mess
     captures.push(button.index);
     return { url: `https://fd.oneme.ru/file-${button.index}.pdf`, name: `server-file-${button.index}.pdf` };
   } });
-  const result = await content.exportOpen({ limit: 100, media: true, downloadMedia: true }, value => phases.push(value.stage));
+  const result = await content.exportOpen({ limit: 100, media: true, downloadMedia: true }, value => {phases.push(value.stage); progressValues.push(value);});
   assert.equal(result.messages.length, 60);
+  const mediaProgress=progressValues.filter(value=>value.stage==='resolving');
+  assert.ok(mediaProgress.every(value=>value.fileCount<=value.fileTotal));
+  assert.equal(mediaProgress.at(-1).fileCount,2);
+  assert.equal(mediaProgress.at(-1).fileTotal,2);
   assert.deepEqual(captures.sort((a,b) => a-b), [0, 59]);
   assert.equal(result.messages[0].attachments[0].url, 'https://fd.oneme.ru/file-0.pdf');
   assert.equal(result.messages[59].attachments[0].url, 'https://fd.oneme.ru/file-59.pdf');
   phases.length = 0; captures.length = 0;
-  const limited = await content.exportOpen({ limit: 40, media: true, downloadMedia: true }, value => phases.push(value.stage));
+  const limited = await content.exportOpen({ limit: 40, media: true, downloadMedia: true }, value => {phases.push(value.stage); progressValues.push(value);});
   assert.equal(limited.messages.length, 40);
   assert.equal(limited.reason, 'message_limit');
   assert.deepEqual(captures, [59], 'do not resolve files outside the requested history');
@@ -618,4 +622,34 @@ test('repeated MAX window with one changed message does not triple the archive',
   const missingOverlap = content.mergeOlder(current, unrelated);
   assert.equal(missingOverlap.items.length, 30);
   assert.equal(missingOverlap.gap, true);
+});
+
+
+test('viewer HTTPS src is usable while currentSrc still contains a data placeholder', async () => {
+  let open = false;
+  const image = {currentSrc:'data:image/gif;base64,AA', getAttribute:()=> 'https://i.oneme.ru/real.jpg', closest:()=>null, naturalWidth:0};
+  const viewer={querySelectorAll:()=>[image],querySelector:selector=>selector.includes('Close') ? {click(){open=false;}} : null};
+  const api=loadContent({querySelector:()=>open?viewer:null},{instantWait:true,capture:async()=>null});
+  const result=await api.capturePhoto({click(){open=true;}},()=>{});
+  assert.equal(result.url,'https://i.oneme.ru/real.jpg');
+});
+
+
+test('a second export and foreign cancellation cannot interfere with the active MAX job', async () => {
+  let connect, release;
+  const gate = new Promise(resolve => {release=resolve;});
+  let source=fs.readFileSync(path.join(__dirname,'..','content.js'),'utf8');
+  source=source.replace(/\}\)\(\);\s*$/, 'exportOpen = async () => {await gate; if(cancelled) throw Error("cancelled"); return {messages:[]};}; currentChatGuard=()=>()=>{};})();');
+  const context={gate, document:{visibilityState:'visible',querySelector:()=>null,title:'MAX'}, chrome:{runtime:{onConnect:{addListener(fn){connect=fn;}}}}};
+  vm.runInNewContext(source,context);
+  function port(){const out=[];let receive;const p={name:'max-export',onMessage:{addListener(fn){receive=fn;}},postMessage(value){out.push(value);}};connect(p);return {out,send:message=>receive(message)};}
+  const a=port(),b=port();
+  const first=a.send({type:'export',id:1,options:{}});
+  await Promise.resolve();
+  await b.send({type:'export',id:2,options:{}});
+  assert.equal(b.out[0].code,'EXPORT_BUSY');
+  await b.send({type:'cancel'});
+  await b.send({type:'current',id:3});
+  release();await first;
+  assert.equal(a.out.at(-1).type,'result');
 });
