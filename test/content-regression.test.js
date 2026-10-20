@@ -68,14 +68,15 @@ test('date separator applies to following messages in the same day', () => {
 });
 
 test('discovery returns to the chat list when compact MAX has unmounted its rows', async () => {
-  let opened = true;
-  const row = { getClientRects: () => [1], parentElement: null, innerText: 'Чат', querySelector: selector => selector === 'a[href]' ? null : { textContent: 'Чат' }, getAttribute: () => null };
+  let opened = true, returned = 0;
+  const row = { getClientRects: () => [1], parentElement: null, innerText: 'Чат', querySelector: selector => selector === 'a[href]' ? null : selector === '.cell' ? { click() { opened = true; } } : { textContent: 'Чат' }, getAttribute: () => null };
   const list = { clientHeight: 100, scrollHeight: 100, parentElement: null, get scrollTop() { return 0; }, set scrollTop(_value) {} };
-  const root = { querySelector: selector => selector.includes('Go back') ? { click() { opened = false; } } : null };
-  const document = { body: {}, querySelector: selector => selector === '.aside' ? list : selector === '.openedChat' && opened ? root : null, querySelectorAll: () => opened ? [] : [row] };
+  const root = { querySelector: selector => selector.includes('Go back') ? { click() { opened = false; returned++; } } : selector.includes('messageWrapper') ? {} : { textContent: 'Чат' } };
+  const document = { body: {}, title: 'MAX', querySelector: selector => selector === '.aside' ? list : selector === '.openedChat' && opened ? root : null, querySelectorAll: () => opened ? [] : [row] };
   const result = await loadContent(document, { instantWait: true }).discover();
   assert.equal(result.chats.length, 1);
-  assert.equal(opened, false);
+  assert.equal(returned, 1);
+  assert.equal(opened, true, 'restore the original chat for current-chat export');
   assert.equal(result.complete, true);
 });
 

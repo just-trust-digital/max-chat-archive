@@ -41,6 +41,7 @@
     throw new Error('Список чатов не появился в MAX. Откройте раздел «Чаты» и повторите поиск.');
   }
   async function discover() {
+    const previousTitle = !visibleRows().length && document.querySelector('.openedChat') ? openedTitle() : null;
     await showChatList();
     const list = document.querySelector('.aside');
     if (!list) throw new Error('Список чатов не найден. Откройте раздел «Чаты» в MAX.');
@@ -64,7 +65,13 @@
         if (stable >= 4) { complete = true; break; }
       }
     } finally { scroller.scrollTop = original; }
-    return { chats: [...found.values()], complete };
+    const chats = [...found.values()];
+    if (previousTitle) {
+      const matches = chats.filter(chat => comparableTitle(chat.title) === comparableTitle(previousTitle));
+      if (matches.length !== 1) throw new Error('Поиск завершён. Откройте исходный чат в MAX перед экспортом открытой переписки.');
+      await openChat(matches[0]);
+    }
+    return { chats, complete };
   }
   function openedTitle() {
     const root = document.querySelector('.openedChat');

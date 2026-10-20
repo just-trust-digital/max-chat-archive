@@ -40,6 +40,7 @@
     aside.querySelector('.cell').addEventListener('click', () => {
       aside.replaceChildren();
       document.getElementById('chat').innerHTML = `<div class="openedChat"><div class="header"><div class="content--subtitle"><span class="title">${title}</span><span class="subtitle">1 of 22 online</span></div></div><div class="history"></div></div>`;
+      const back = document.createElement('button'); back.setAttribute('aria-label', 'Go back'); back.textContent = 'К списку'; back.onclick = reset; document.querySelector('.header').prepend(back);
       const pane = document.querySelector('.history'); renderMessages(pane, 60, 90); pane.scrollTop = pane.scrollHeight;
       let loading = false, ready = !delayedLoader, edgeEligible = !delayedLoader, previousTop = pane.scrollTop;
       pane.addEventListener('scroll', () => {
@@ -91,6 +92,8 @@
         const zip = new ZipArchive(); ArchiveFormat.add(zip, 'synthetic', result, 'html-json');
         const archiveBytes = (await zip.blob().arrayBuffer()).byteLength; check(archiveBytes > 1000, 'ZIP пуст');
         results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, restarts: result.history.restarts, fileClicks: captures.length, photos: photoCaptures.length, archiveBytes });
+        const refreshed = await call('discover');
+        check(refreshed.chats.length === 1 && document.querySelector('.openedChat'), 'Обновление скрытого списка не восстановило исходный чат');
       }
       output.dataset.status = 'passed'; output.textContent = JSON.stringify({ status: 'passed', scenarios: results }, null, 2);
     } catch (error) { output.dataset.status = 'failed'; output.textContent = error.stack || String(error); }
