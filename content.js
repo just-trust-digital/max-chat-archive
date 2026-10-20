@@ -6,6 +6,23 @@
   let cancelled = false;
   const captureCancellations = new Set();
 
+  async function waitForVisible(progress, title, count) {
+    if (document.visibilityState !== 'hidden') return 0;
+    const started = Date.now();
+    progress({title, count, stage:'visibility'});
+    try { await chrome.runtime.sendMessage?.({type:'max-archive-show'}); } catch { /* Embedded browsers may not implement activation. */ }
+    for (let attempt=0; document.visibilityState === 'hidden' && attempt<480 && Date.now()-started<120000; attempt++) {
+      if (cancelled) throw new Error('Остановлено пользователем.');
+      await wait(250);
+    }
+    if (document.visibilityState === 'hidden') {
+      const error = new Error('MAX остаётся скрытым. Покажите вкладку MAX в окне браузера и повторите экспорт.');
+      error.code='MAX_HIDDEN'; throw error;
+    }
+    if (cancelled) throw new Error('Остановлено пользователем.');
+    return Date.now()-started;
+  }
+
   function titleOf(row) {
     return (row.querySelector('.title, [class*="title"]')?.textContent || row.getAttribute('aria-label') || row.innerText?.split('\n')[0] || '').trim();
   }
@@ -212,6 +229,7 @@
     let viewer = null;
     try {
       assertActive();
+      await waitForVisible(() => {}, openedTitle(), 0);
       tile.scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
       await wait(250); if (cancelled) return null; assertActive();
       tile.click();
@@ -247,6 +265,7 @@
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     for (let index = 0; index < rows.length; index++) {
       if (!items[index]?.attachments.length) continue;
+      await waitForVisible(progress, title, items.length);
       rows[index].scrollIntoView?.({block: 'center', inline: 'nearest', behavior: 'instant'});
       await wait(300); assertActive();
       // MAX can replace a placeholder tile with video/source only after it is
@@ -388,6 +407,7 @@
     const root = document.querySelector('.openedChat');
     if (!root) throw new Error('Открытый чат не найден. Выберите переписку в MAX.');
     const title = openedTitle();
+    const initialVisibilityWait = await waitForVisible(progress, title, 0);
     let scroller = null;
     for (let attempt = 0; attempt < 20; attempt++) {
       scroller = historyScroller();
@@ -400,7 +420,7 @@
     assertActive();
     let messages = snapshot();
     const initialCount = messages.length;
-    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, pacing: chrome.runtime.sendMessage ? 'extension-worker' : 'page-timer', lastSteps: [] };
+    const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, visibilityWaitMs: initialVisibilityWait, pacing: chrome.runtime.sendMessage ? 'extension-worker' : 'page-timer', lastSteps: [] };
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let movedTowardHistory = false;
     if (!scroller) {
@@ -410,11 +430,14 @@
       return { title, messages, complete: false, reason: 'scroll_container_not_found', gaps, history };
     }
     const started = Date.now();
+    let visibilityPausedMs = 0;
     for (let round = 0; round < 5000; round++) {
       if (cancelled) { reason = 'cancelled'; break; }
+      const paused = await waitForVisible(progress, title, messages.length);
+      visibilityPausedMs += paused; history.visibilityWaitMs += paused;
       assertActive();
       if (messages.length >= options.limit) { reason = 'message_limit'; break; }
-      if (Date.now() - started > 10 * 60 * 1000) { reason = 'timeout'; break; }
+      if (Date.now() - started - visibilityPausedMs > 10 * 60 * 1000) { reason = 'timeout'; break; }
       const liveScroller = historyScroller();
       if (!liveScroller) { reason = 'scroll_container_not_found'; break; }
       let replaced = liveScroller !== scroller;
@@ -425,6 +448,7 @@
       scrollHistoryUp(scroller);
       const waitStarted = Date.now();
       await wait(450);
+      if (document.visibilityState === 'hidden') { stable=0; continue; }
       assertActive();
       const afterScroller = historyScroller();
       if (!afterScroller) { reason = 'scroll_container_not_found'; break; }
@@ -514,6 +538,7 @@
         if (message.type === 'current') port.postMessage({ type: 'result', id: message.id, value: { title: openedTitle() } });
         if (message.type === 'export') {
           const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
+          await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
           const result = await exportOpen(message.options, progress, assertActive);
           const messages = result.messages;
@@ -522,7 +547,7 @@
           }
           port.postMessage({ type: 'result', id: message.id, value: { ...result, messages: [] } });
         }
-      } catch (error) { port.postMessage({ type: 'error', id: message.id, error: error.message }); }
+      } catch (error) { port.postMessage({ type: 'error', id: message.id, error: error.message, code: error.code }); }
     });
   });
 })();

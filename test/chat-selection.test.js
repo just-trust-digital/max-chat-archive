@@ -10,7 +10,7 @@ test('select all and clear all update the selected chat count', () => {
   assert.notEqual(instrumented, source);
   const inputs = [{ value: 'one', checked: true }, { value: 'two', checked: false }];
   const controls = new Map();
-  for (const id of ['status', 'chat-list', 'start', 'cancel', 'log', 'stage-progress', 'selection-count', 'bulk-actions', 'select-all', 'select-none', 'refresh']) {
+  for (const id of ['status', 'chat-list', 'start', 'cancel', 'log', 'stage-progress', 'selection-count', 'bulk-actions', 'select-all', 'select-none', 'refresh', 'show-max', 'visibility-stop', 'visibility-dialog']) {
     controls.set(id, { addEventListener() {}, querySelectorAll: selector => selector === 'input:checked' ? inputs.filter(input => input.checked) : inputs });
   }
   const document = {

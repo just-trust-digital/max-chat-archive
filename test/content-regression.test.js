@@ -272,6 +272,33 @@ test('history continues when page timers are suspended but extension worker is r
   assert.ok(workerWaits > 0);
 });
 
+test('hidden MAX must become visible before its history loading edge is crossed', async () => {
+  let top=600,mounted=30,activations=0;
+  const scroller={overflowY:'auto',scrollHeight:1000,clientHeight:400,parentElement:null,get scrollTop(){return top;},set scrollTop(value){top=Math.max(0,Math.min(600,value));if(top===0&&document.visibilityState==='visible')mounted=60;}};
+  const rows=Array.from({length:60},(_,index)=>{const row=messageRow({text:`Сообщение ${index}`});row.parentElement=scroller;return row;});
+  const root={querySelector:selector=>selector==='.messageWrapper'?rows[60-mounted]:{textContent:'Чат'}};
+  const document={title:'MAX',visibilityState:'hidden',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>rows.slice(60-mounted)};
+  let receive;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','timer-worker.js'),'utf8'),{
+    chrome:{runtime:{id:'self',onMessage:{addListener(fn){receive=fn;}}},tabs:{async update(id){assert.equal(id,7);activations++;document.visibilityState='visible';}},windows:{async update(){}}},
+    setTimeout:fn=>queueMicrotask(fn)
+  });
+  const runtime={onConnect:{addListener(){}},sendMessage:message=>new Promise(resolve=>receive(message,{id:'self',tab:{id:7,windowId:2}},resolve))};
+  const result=await loadContent(document,{runtime}).exportOpen({limit:100},()=>{});
+  assert.equal(activations,1);
+  assert.equal(result.messages.length,60);
+});
+
+test('embedded browser that cannot show MAX returns a visibility error instead of a 30-message archive', async () => {
+  let shown=0;
+  const row=messageRow();
+  const root={querySelector:()=>({textContent:'Чат'})};
+  const document={visibilityState:'hidden',title:'MAX',querySelector:()=>root,querySelectorAll:()=>[row]};
+  const runtime={onConnect:{addListener(){}},async sendMessage(message){if(message.type==='max-archive-show')shown++;return {ok:true};}};
+  await assert.rejects(loadContent(document,{runtime}).exportOpen({limit:100},()=>{}),error=>error.code==='MAX_HIDDEN');
+  assert.equal(shown,1);
+});
+
 test('unmoving history is reported as partial instead of complete', async () => {
   const scroller = {
     overflowY: 'auto', scrollHeight: 1000, clientHeight: 100, parentElement: null,

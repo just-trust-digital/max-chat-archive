@@ -35,13 +35,24 @@
       if (message.type === 'progress') return job.onProgress(message.value);
       if (message.type === 'chunk') { job.chunks.push(message.messages); return; }
       pending.delete(message.id);
-      if (message.type === 'error') job.reject(new Error(message.error));
+      if (message.type === 'error') { const error = new Error(message.error); error.code = message.code; job.reject(error); }
       else job.resolve(message.value?.messages ? { ...message.value, messages: job.chunks.flat() } : message.value);
     });
     port.onDisconnect.addListener(() => {
       for (const job of pending.values()) job.reject(new Error('Связь с MAX потеряна. Не закрывайте и не обновляйте вкладку во время экспорта.'));
       pending.clear(); port = null; note('Связь с вкладкой MAX потеряна.', true);
     });
+  }
+  async function showMax() {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (chrome.windows?.update && tab?.windowId != null) {
+      try { await chrome.windows.update(tab.windowId, { focused: true }); } catch {}
+    }
+  }
+  function visibilityPrompt(show) {
+    const dialog = $('visibility-dialog');
+    if (show && !dialog.open) dialog.showModal?.();
+    if (!show && dialog.open) dialog.close?.();
   }
   function scope() { return document.querySelector('input[name="scope"]:checked').value; }
   function options() {
@@ -195,7 +206,7 @@
       reportTabId = (await chrome.tabs.getCurrent())?.id ?? null;
       // MAX needs an active tab: background timer throttling can consume the
       // history deadline before even one screenful has been traversed.
-      await chrome.tabs.update(tabId, { active: true });
+      await showMax();
       const combinedZip = perChat ? null : new ZipArchive();
       const report = { exportedAt: new Date().toISOString(), extensionVersion: chrome.runtime.getManifest().version, source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
       for (let index = 0; index < selected.length; index++) {
@@ -206,10 +217,11 @@
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
         try {
           const result = await call('export', { chat: info, options: settings }, value => {
-            const phase = value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
+            visibilityPrompt(value.stage === 'visibility');
+            const phase = value.stage === 'visibility' ? 'Ожидание показа MAX — откройте вкладку MAX' : value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
             const files = value.stage === 'resolving' ? `; обработано вложений ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
             stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${files}`, value.stage === 'resolving' ? value.fileCount : null, value.fileTotal);
-            rows[index].textContent = `${value.title} — ${phase.toLowerCase()}, ${value.count} сообщений`;
+            rows[index].textContent = `${value.title} — ${phase[0].toLowerCase() + phase.slice(1)}, ${value.count} сообщений`;
           });
           stage(`Чат ${index + 1} из ${selected.length}: подготовка сообщений…`);
           const unknownDates = result.messages.filter(message => !ArchiveFormat.dateOf(message)).length;
@@ -238,6 +250,7 @@
         } catch (error) {
           report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
           rows[index].textContent = `${info?.title || 'Открытый чат'} — ошибка: ${error.message}`;
+          if (error.code === 'MAX_HIDDEN') stopped = true;
         }
         $('progress').value = index + 1;
         $('overall-text').textContent = `Обработано ${index + 1} из ${selected.length} чатов`;
@@ -255,6 +268,7 @@
       } else note(report.errors[0]?.error || 'Нет данных для архива.', true);
     } catch (error) { note(error.message, true); }
     finally {
+      visibilityPrompt(false);
       running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; updateSelection();
       if (reportTabId != null) {
         try { await chrome.tabs.update(reportTabId, { active: true }); } catch { /* The report tab may have been closed. */ }
@@ -277,6 +291,10 @@
   $('select-all').addEventListener('click', () => setChatSelection(true));
   $('select-none').addEventListener('click', () => setChatSelection(false));
   start.addEventListener('click', run);
-  cancel.addEventListener('click', () => { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); });
+  function stopExport() { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
+  $('show-max').addEventListener('click', () => showMax().catch(error => note(error.message, true)));
+  $('visibility-stop').addEventListener('click', stopExport);
+  $('visibility-dialog').addEventListener('cancel', event => { event.preventDefault(); stopExport(); });
+  cancel.addEventListener('click', stopExport);
   init();
 })();

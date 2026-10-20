@@ -3,13 +3,17 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
-const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/content.js', '/download-bridge.js', '/zip.js', '/format.js']);
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
+const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css']);
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.css':'text/css; charset=utf-8' };
 const previewMedia = { '/test/media/photo.svg': 'fixtures/photo.svg', '/test/media/sample.webm': 'fixtures/sample.webm', '/test/media/sample.wav': 'fixtures/sample.wav', '/test/media/document.txt': 'fixtures/document.txt' };
 http.createServer(async (request, response) => {
   const route = new URL(request.url, 'http://127.0.0.1').pathname;
-  if (request.method !== 'GET' || !routes.has(route) && route !== '/test/archive-preview.html' && !previewMedia[route]) { response.writeHead(404); response.end(); return; }
+  if (request.method !== 'GET' || !routes.has(route) && route !== '/test/archive-preview.html' && route !== '/test/export-visibility.html' && !previewMedia[route]) { response.writeHead(404); response.end(); return; }
   try {
+    if (route === '/test/export-visibility.html') {
+      const html=(await fs.readFile(path.join(root,'export.html'),'utf8')).replace('<head>','<head><base href="/">').replace('<script src="export.js">','<script src="/fixtures/export-visibility.js"></script><script src="export.js">');
+      response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});response.end(html);return;
+    }
     if (route === '/test/archive-preview.html') {
       const source = await fs.readFile(path.join(root, 'format.js'), 'utf8');
       const format = vm.runInNewContext(`${source}\nArchiveFormat`, { URL });
