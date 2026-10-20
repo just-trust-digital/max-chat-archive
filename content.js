@@ -437,7 +437,7 @@
     const history = { initialMessages: initialCount, scrollAttempts: 0, paneReplacements: 0, restarts: 0, visibilityWaitMs: initialVisibilityWait, pacing: chrome.runtime.sendMessage ? 'extension-worker' : 'page-timer', lastSteps: [] };
     let gaps = 0, stable = 0, reason = 'top', reachedTop = false;
     let checkpointAt=Date.now(), checkpointCount=messages.length;
-    const saveHistory = () => checkpoint({title,messages,complete:false,reason:'checkpoint',gaps,history});
+    const saveHistory = () => checkpoint({title,messages:messages.slice(-options.limit),complete:false,reason:'checkpoint',gaps,history});
     await saveHistory();
     let movedTowardHistory = false;
     if (!scroller) {

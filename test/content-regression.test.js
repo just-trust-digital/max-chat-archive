@@ -667,3 +667,14 @@ test('history checkpoints precede file resolution and failed persistence stops r
   assert.equal(copies[0].reason,'checkpoint');
   await assert.rejects(api.exportOpen({limit:100},()=>{},()=>{},async()=>{throw Error('disk full');}),/disk full/);
 });
+
+
+test('recovery checkpoint respects a limit smaller than the mounted MAX window', async () => {
+  const rows=[messageRow({text:'Earlier'}),messageRow({text:'Latest'})];
+  const root={querySelector:selector=>selector.includes('messageWrapper')?rows[0]:{textContent:'Chat'}};
+  const document={title:'MAX',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>rows};
+  const copies=[];
+  await loadContent(document,{instantWait:true}).exportOpen({limit:1},()=>{},()=>{},async value=>copies.push(JSON.parse(JSON.stringify(value))));
+  assert.ok(copies.every(copy=>copy.messages.length===1));
+  assert.equal(copies[0].messages[0].text,'Latest');
+});
