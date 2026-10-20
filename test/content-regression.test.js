@@ -99,12 +99,22 @@ test('file button is captured while emoji image is ignored', () => {
     querySelector: selector => selector.includes('title') ? title : null
   };
   const row = {
-    querySelectorAll(selector) { return selector.includes('button') ? [emoji, file] : [emoji]; }
+    querySelectorAll(selector) { return selector.includes('button.tile') ? [] : selector.includes('button') ? [emoji, file] : [emoji]; }
   };
   const content = loadContent({});
   const attachments = content.attachmentsOf(row);
   assert.equal(attachments.length, 1);
   assert.equal(attachments[0].name, 'документ.pdf');
+});
+
+test('photo tiles with data placeholders are retained as pending photos', () => {
+  const tile = { querySelector: () => null };
+  const row = { querySelectorAll: selector => selector.includes('button.tile') ? [tile, tile] : [] };
+  const photos = loadContent({}).attachmentsOf(row);
+  assert.equal(photos.length, 2);
+  assert.equal(photos[0].kind, 'photo');
+  assert.equal(photos[0].source, 'photo-tile');
+  assert.equal(photos[0].url, null);
 });
 
 test('export waits for a scrollable history before treating 30 visible messages as the archive', async () => {

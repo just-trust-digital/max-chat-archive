@@ -1,6 +1,7 @@
 (() => {
   const CHAT_ROWS = '.aside .wrapper--withActions:has(.cell .title)';
   const MESSAGE_ROWS = '.openedChat .messageWrapper';
+  const PHOTO_TILES = '[aria-label="Прикрепленные фото"] button.tile';
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   let cancelled = false;
 
@@ -103,10 +104,14 @@
       }
     };
   }
+  function photoTiles(row) {
+    return [...row.querySelectorAll(PHOTO_TILES)].filter(tile => !tile.querySelector('video, audio, source'));
+  }
   function attachmentsOf(row) {
     const items = [];
     for (const element of row.querySelectorAll('a[href],img[src],video[src],audio[src],source[src],button[aria-label="Скачать"]')) {
       if (element.closest?.('[class*="emoji"], [class*="Emoji"], [class*="reaction"], [class*="avatar"]')) continue;
+      if (element.tagName.toLowerCase() === 'img' && element.closest?.(PHOTO_TILES)) continue;
       if (element.tagName.toLowerCase() === 'button') {
         const name = element.querySelector?.('.title, [class*="title"]')?.textContent?.trim() || element.textContent?.trim().slice(0, 100) || 'Вложение';
         items.push({ kind: 'file', url: null, downloadable: false, source: 'download-button', name });
@@ -120,6 +125,7 @@
       const kind = tag === 'a' ? 'file-or-link' : tag;
       items.push({ kind, url, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
     }
+    photoTiles(row).forEach((_tile, index) => items.push({ kind: 'photo', url: null, downloadable: false, source: 'photo-tile', name: `photo-${index + 1}` }));
     return [...new Map(items.map((item, index) => [item.url || `button:${index}:${item.name}`, item])).values()];
   }
   function extract(row, dateLabel) {
@@ -178,7 +184,29 @@
       window.postMessage({ marker, type: 'arm', nonce }, location.origin);
     });
   }
-  async function captureVisibleUrls(items, options, cache, progress, title) {
+  async function capturePhoto(tile, assertActive) {
+    if (document.querySelector('dialog[open]')) return null;
+    let viewer = null;
+    try {
+      assertActive(); tile.click();
+      for (let attempt = 0; attempt < 50; attempt++) {
+        if (cancelled) return null;
+        await wait(100); assertActive();
+        viewer = document.querySelector('dialog[open]');
+        const image = viewer && [...viewer.querySelectorAll('img[src]')].find(img => !img.closest('[class*="avatar"]') && /^https?:\/\//i.test(img.currentSrc || img.getAttribute('src') || ''));
+        if (!image) continue;
+        const fallback = { url: image.currentSrc || image.getAttribute('src'), quality: 'viewer', width: image.naturalWidth || null, height: image.naturalHeight || null };
+        const download = viewer.querySelector('button[aria-label="Download"], button[aria-label="Скачать"]');
+        const original = download ? await captureButton(download) : null;
+        return original?.url && /^https:\/\//i.test(original.url) ? { ...original, quality: 'download' } : fallback;
+      }
+      return null;
+    } finally {
+      const close = viewer?.querySelector('button[aria-label="Close"], button[aria-label="Закрыть"]');
+      if (close) { close.click(); await wait(50); }
+    }
+  }
+  async function captureVisibleUrls(items, options, cache, progress, title, assertActive = () => {}) {
     if (!options.downloadMedia || !options.media || typeof window === 'undefined') return items;
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
     for (let index = 0; index < rows.length; index++) {
@@ -199,6 +227,19 @@
           files[fileIndex].source = 'download-button-url';
           if (captured.name) files[fileIndex].name = captured.name;
         }
+      }
+      const tiles = photoTiles(rows[index]);
+      const photos = items[index]?.attachments.filter(attachment => attachment.source === 'photo-tile') || [];
+      for (let photoIndex = 0; photoIndex < Math.min(tiles.length, photos.length); photoIndex++) {
+        if (cancelled) return items;
+        assertActive();
+        const key = `${messageKey}:photo:${photoIndex}`;
+        if (!cache.has(key)) {
+          progress({ title, count: items.length, stage: 'resolving', fileCount: cache.size + 1 });
+          cache.set(key, await capturePhoto(tiles[photoIndex], assertActive));
+        }
+        const captured = cache.get(key);
+        if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
       }
     }
     return items;
@@ -249,7 +290,7 @@
     const targets = new Map();
     if (!options.media || !options.downloadMedia) return { neededMessages: 0, unresolvedMessages: 0, scrollAttempts: 0 };
     for (const message of messages) {
-      if (!message.attachments.some(item => item.source === 'download-button')) continue;
+      if (!message.attachments.some(item => item.source === 'download-button' || item.source === 'photo-tile')) continue;
       const key = signature(message);
       if (!targets.has(key)) targets.set(key, []);
       targets.get(key).push(message);
@@ -268,14 +309,14 @@
       const keys = visible.map(signature);
       // Keep row indexes aligned while resolving only files included by the history limit.
       const wanted = visible.map((item, index) => targets.has(keys[index]) ? item : { ...item, attachments: [] });
-      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length }), title);
+      await captureVisibleUrls(wanted, options, cache, value => progress({ ...value, count: messages.length }), title, assertActive);
       assertActive();
       const before = targets.size;
       for (let itemIndex = 0; itemIndex < wanted.length; itemIndex++) {
         const item = wanted[itemIndex], key = keys[itemIndex], copies = targets.get(key);
         if (!copies) continue;
         for (const copy of copies) item.attachments.forEach((attachment, index) => {
-          if (attachment.source === 'download-button-url') Object.assign(copy.attachments[index], attachment);
+          if (attachment.source === 'download-button-url' || attachment.source === 'photo-viewer') Object.assign(copy.attachments[index], attachment);
         });
         targets.delete(key);
       }

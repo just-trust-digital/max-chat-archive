@@ -1,6 +1,6 @@
 (() => {
   let connectListener, handleMessage, loaded = 30, phase = '', sequence = 0;
-  const jobs = new Map(), captures = [], title = 'Синтетический чат';
+  const jobs = new Map(), captures = [], photoCaptures = [], title = 'Синтетический чат';
   window.chrome = { runtime: { onConnect: { addListener(fn) { connectListener = fn; } } } };
   function check(value, message) { if (!value) throw new Error(message); }
   function renderMessages(pane, from, to, prepend = false) {
@@ -14,11 +14,26 @@
           captures.push({ index, phase });
           const link = document.createElement('a'); link.href = `https://fd.oneme.ru/fixture-${index}.pdf`; link.download = `file-${index}.pdf`; link.click();
         }); row.append(button);
-      } fragment.append(row);
+      }
+      if (index === 45) {
+        const grid = document.createElement('div'); grid.setAttribute('aria-label', 'Прикрепленные фото');
+        grid.innerHTML = '<button class="tile">Фото</button>';
+        grid.querySelector('button').addEventListener('click', () => {
+          const viewer = document.createElement('dialog');
+          viewer.innerHTML = '<img src="/fixtures/photo.svg" alt="Тестовое фото"><button aria-label="Close">Закрыть</button><button aria-label="Download">Скачать фото</button>';
+          viewer.querySelector('[aria-label="Close"]').onclick = () => viewer.remove();
+          viewer.querySelector('[aria-label="Download"]').onclick = () => {
+            photoCaptures.push({ phase });
+            const link = document.createElement('a'); link.href = 'https://fd.oneme.ru/fixture-photo.jpg'; link.download = 'original-photo.jpg'; link.click();
+          };
+          document.body.append(viewer); viewer.showModal();
+        }); row.append(grid);
+      }
+      fragment.append(row);
     } if (prepend) pane.prepend(fragment); else pane.append(fragment);
   }
   function reset() {
-    loaded = 30; phase = ''; captures.length = 0;
+    loaded = 30; phase = ''; captures.length = 0; photoCaptures.length = 0;
     document.getElementById('chat').replaceChildren();
     const aside = document.querySelector('.aside');
     aside.innerHTML = `<div class="wrapper--withActions"><a href="#fixture-chat" hidden></a><div class="cell"><span class="title">${title}</span></div></div>`;
@@ -62,11 +77,13 @@
         check(result.messages.at(-1).text === 'Сообщение 89', 'Потеряно последнее сообщение');
         check(captures.every(item => item.phase === 'resolving'), 'Файл нажат до окончания загрузки истории');
         check(captures.length === (limit === 100 ? 2 : 1), 'Неверное число файлов');
+        check(photoCaptures.length === 1 && photoCaptures[0].phase === 'resolving', 'Фото не получено после загрузки истории');
+        check(!document.querySelector('dialog[open]'), 'Просмотрщик фото остался открыт');
         check(result.messages.flatMap(item => item.attachments).every(item => item.downloadable && item.url), 'Адрес файла не получен');
         check(result.reason === (limit === 100 ? 'top' : 'message_limit'), 'Неверная причина завершения');
         const zip = new ZipArchive(); ArchiveFormat.add(zip, 'synthetic', result, 'html-json');
         const archiveBytes = (await zip.blob().arrayBuffer()).byteLength; check(archiveBytes > 1000, 'ZIP пуст');
-        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, fileClicks: captures.length, archiveBytes });
+        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, fileClicks: captures.length, photos: photoCaptures.length, archiveBytes });
       }
       output.dataset.status = 'passed'; output.textContent = JSON.stringify({ status: 'passed', scenarios: results }, null, 2);
     } catch (error) { output.dataset.status = 'failed'; output.textContent = error.stack || String(error); }

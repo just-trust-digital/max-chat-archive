@@ -85,3 +85,15 @@ test('other okcdn hosts stay outside the media allowlist', async () => {
   assert.equal(fetched, false);
   assert.equal(report.skippedMedia.length, 1);
 });
+
+test('viewer photo is written as an image and unresolved photo is reported', async () => {
+  const exporter = loadExporter(async () => new Response(new Uint8Array([255, 216, 255, 217]), { headers: { 'content-type': 'image/jpeg' } }));
+  const photo = { kind: 'photo', name: 'photo-1', source: 'photo-viewer', downloadable: true, url: 'https://i.oneme.ru/i?r=fixture' };
+  const missing = { kind: 'photo', name: 'photo-2', source: 'photo-tile', downloadable: false, url: null };
+  const files = new Map(), report = { skippedMedia: [] };
+  await exporter.downloadMedia({ add(name, bytes) { files.set(name, bytes); } }, { messages: [{ attachments: [photo, missing] }] }, 'chat', report, 0, () => {});
+  assert.ok(files.has('chat/media/0001-photo-1.jpg'));
+  assert.equal(photo.localPath, 'media/0001-photo-1.jpg');
+  assert.equal(report.skippedMedia.length, 1);
+  assert.equal(report.skippedMedia[0].name, 'photo-2');
+});
