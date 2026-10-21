@@ -26,7 +26,7 @@ function bridge() {
   const originalPlay=HTMLMediaElement.prototype.play;
   const originalClick = HTMLAnchorElement.prototype.click;
   const source = fs.readFileSync(path.join(__dirname, '..', 'download-bridge.js'), 'utf8');
-  vm.runInNewContext(source, { window, location, HTMLAnchorElement, HTMLMediaElement, setTimeout, clearTimeout });
+  vm.runInNewContext(source, { window, location, HTMLAnchorElement, HTMLMediaElement, setTimeout, clearTimeout, Uint8Array, btoa:value=>Buffer.from(value,'binary').toString('base64'),fetch:async()=>({arrayBuffer:async()=>new Uint8Array([79,103,103,83]).buffer,headers:{get:()=> 'audio/ogg'}}) });
   return { window, messages, HTMLAnchorElement, HTMLMediaElement, originalPlay, played:()=>played, originalClick, ordinaryClicks: () => ordinaryClicks };
 }
 
@@ -60,4 +60,11 @@ test('voice source is captured without playing private audio and the play hook i
  assert.equal(state.played(),0);
  assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
  await new state.HTMLMediaElement('https://fd.oneme.ru/ordinary.ogg').play();assert.equal(state.played(),1);
+});
+
+
+test('temporary voice blob is captured as bounded inline audio data',async()=>{
+ const state=bridge();state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'blob',mode:'voice'});
+ await new state.HTMLMediaElement('blob:https://web.max.ru/synthetic').play();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(state.messages.at(-1).href,'data:audio/ogg;base64,T2dnUw==');assert.equal(state.played(),0);assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
 });

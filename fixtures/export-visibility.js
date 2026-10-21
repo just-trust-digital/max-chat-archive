@@ -20,6 +20,7 @@
     tabs:{connect:()=>port,getCurrent:async()=>({id:8}),update:async()=>({})},
     storage:{local:{get:async()=>({}),set:async()=>{}}},
     downloads:{download:async({url})=>{
+      if(new URLSearchParams(location.search).get('fixture')==='recovery-error') throw new Error('Скачивание прервано браузером (синтетическая проверка)');
       if(new URLSearchParams(location.search).get('fixture')!=='recovery') throw new Error('Synthetic visibility test must not download');
       const bytes=new Uint8Array(await (await fetch(url)).arrayBuffer()), view=new DataView(bytes.buffer), decoder=new TextDecoder(), entries=new Map();
       let offset=0;

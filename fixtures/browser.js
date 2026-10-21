@@ -1,6 +1,6 @@
 (() => {
   let connectListener, handleMessage, loaded = 30, phase = '', sequence = 0, delayedLoader = false;
-  const jobs = new Map(), captures = [], photoCaptures = [], title = 'Синтетический чат';
+  const jobs = new Map(), captures = [], photoCaptures = [], voiceCaptures = [], title = 'Синтетический чат';
   window.chrome = { runtime: { onConnect: { addListener(fn) { connectListener = fn; } } } };
   function check(value, message) { if (!value) throw new Error(message); }
   function renderMessages(pane, from, to, prepend = false) {
@@ -37,13 +37,19 @@
           document.body.append(viewer); viewer.showModal();
         }); row.append(grid);
       }
+      if(index===42) {
+        const voice=document.createElement('div');voice.className='attachAudio';
+        voice.innerHTML='<div class="buttonWrapper"><button>Голосовое</button></div><div class="duration">00:02</div>';
+        voice.querySelector('button').onclick=()=>{voiceCaptures.push({phase});const audio=document.createElement('audio');audio.preload='none';audio.src='/test/media/sample.wav';audio.play();};
+        row.append(voice);
+      }
       const outer = document.createElement('div'); outer.className = 'item';
       const block = document.createElement('div'); block.className = 'block'; block.setAttribute('role', 'listitem');
       block.append(row); outer.append(block); fragment.append(outer);
     } if (prepend) pane.prepend(fragment); else pane.append(fragment);
   }
   function reset() {
-    loaded = 30; phase = ''; captures.length = 0; photoCaptures.length = 0;
+    loaded = 30; phase = ''; captures.length = 0; photoCaptures.length = 0;voiceCaptures.length=0;
     document.getElementById('chat').replaceChildren();
     const aside = document.querySelector('.aside');
     aside.innerHTML = `<div class="wrapper--withActions"><a href="#fixture-chat" hidden></a><div class="cell"><span class="title">${title}</span></div></div>`;
@@ -99,13 +105,15 @@
         check(captures.every(item => item.phase === 'resolving'), 'Файл нажат до окончания загрузки истории');
         check(captures.length === (limit === 100 ? 2 : 1), 'Неверное число файлов');
         check(photoCaptures.length === 1 && photoCaptures[0].phase === 'resolving', 'Фото не получено после загрузки истории');
+        check(voiceCaptures.length===1 && voiceCaptures[0].phase==='resolving','Голосовое не получено после чтения истории');
+        check(result.messages.flatMap(item=>item.attachments).some(item=>item.kind==='voice' && item.downloadable),'Голосовое исчезло из архива');
         check(!document.querySelector('dialog[open]'), 'Просмотрщик фото остался открыт');
         check(result.messages.flatMap(item => item.attachments).every(item => item.downloadable && item.url), 'Адрес файла не получен');
         check(result.reason === (limit === 100 ? 'top' : 'message_limit'), 'Неверная причина завершения');
         if (scenario.delayed) check(result.history.restarts === 1, 'Не выполнен повторный проход после позднего запуска загрузчика');
         const zip = new ZipArchive(); ArchiveFormat.add(zip, 'synthetic', result, 'html-json');
         const archiveBytes = (await zip.blob().arrayBuffer()).byteLength; check(archiveBytes > 1000, 'ZIP пуст');
-        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, restarts: result.history.restarts, fileClicks: captures.length, photos: photoCaptures.length, archiveBytes });
+        results.push({ limit, messages: result.messages.length, complete: result.complete, reason: result.reason, restarts: result.history.restarts, fileClicks: captures.length, photos: photoCaptures.length, voices:voiceCaptures.length, archiveBytes });
         const refreshed = await call('discover');
         check(refreshed.chats.length === 1 && document.querySelector('.openedChat'), 'Обновление скрытого списка не восстановило исходный чат');
       }

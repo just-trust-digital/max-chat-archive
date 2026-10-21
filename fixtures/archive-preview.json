@@ -1,10 +1,89 @@
 {
   "title": "Пример архива",
   "messages": [
-    { "dateLabel": "October 18, 2026", "time": "12:00", "author": "Анна", "text": "Фотография из переписки", "reactions": [], "attachments": [{ "kind": "photo", "name": "Фотография.webp", "localPath": "media/photo.svg" }] },
-    { "dateLabel": "October 18, 2026", "time": "12:05", "author": "Анна", "text": "Короткое видео", "reactions": [], "attachments": [{ "kind": "video", "name": "Видео.webm", "localPath": "media/sample.webm" }] },
-    { "dateLabel": "October 19, 2026", "time": "09:10", "author": "Борис", "direction": "out", "text": "Аудиозапись", "reactions": [], "attachments": [{ "kind": "audio", "name": "Аудио.wav", "localPath": "media/sample.wav" }] },
-    { "dateLabel": "October 19, 2026", "time": "09:15", "author": "Анна", "text": "Документ", "reactions": [], "attachments": [{ "kind": "file", "name": "Очень длинное название документа с пояснениями и датой 19 октября 2026 года.txt", "localPath": "media/document.txt" }] },
-    { "dateLabel": "", "time": "10:00", "author": "Анна", "text": "Сообщение без даты", "reactions": [], "attachments": [{ "kind": "photo", "name": "Недоступная фотография", "url": null }] }
-  ]
+    {
+      "dateLabel": "October 18, 2026",
+      "time": "12:00",
+      "author": "Анна",
+      "text": "Фотография из переписки",
+      "reactions": [],
+      "attachments": [
+        {
+          "kind": "photo",
+          "name": "Фотография.webp",
+          "localPath": "media/photo.svg"
+        }
+      ]
+    },
+    {
+      "dateLabel": "October 18, 2026",
+      "time": "12:05",
+      "author": "Анна",
+      "text": "Короткое видео",
+      "reactions": [],
+      "attachments": [
+        {
+          "kind": "video",
+          "name": "Видео.webm",
+          "localPath": "media/sample.webm",
+          "posterPath": "media/photo.svg"
+        }
+      ]
+    },
+    {
+      "dateLabel": "October 19, 2026",
+      "time": "09:10",
+      "author": "Борис",
+      "direction": "out",
+      "text": "Аудиозапись",
+      "reactions": [],
+      "attachments": [
+        {
+          "kind": "audio",
+          "name": "Аудио.wav",
+          "localPath": "media/sample.wav"
+        }
+      ]
+    },
+    {
+      "dateLabel": "October 19, 2026",
+      "time": "09:15",
+      "author": "Анна",
+      "text": "Документ",
+      "reactions": [],
+      "attachments": [
+        {
+          "kind": "file",
+          "name": "Очень длинное название документа с пояснениями и датой 19 октября 2026 года.txt",
+          "localPath": "media/document.txt"
+        }
+      ],
+      "forwardedFrom": "Мария"
+    },
+    {
+      "dateLabel": "",
+      "time": "10:00",
+      "author": "Анна",
+      "text": "Сообщение без даты",
+      "reactions": [],
+      "attachments": [
+        {
+          "kind": "photo",
+          "name": "Недоступная фотография",
+          "url": null
+        }
+      ]
+    }
+  ],
+  "participants": [
+    {
+      "name": "Анна",
+      "role": "admin"
+    },
+    {
+      "name": "Борис",
+      "role": ""
+    }
+  ],
+  "participantsStatus": "partial"
 }

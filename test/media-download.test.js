@@ -138,3 +138,20 @@ test('download is persisted before ZIP assembly and a storage failure stops furt
   await assert.rejects(failing.downloadMedia({add(){assert.fail('must not assemble unsaved media');}},{messages:[{attachments:[attachment,{...attachment,url:'https://i.oneme.ru/other.jpg'}]}]},'001-chat',{skippedMedia:[]},0,()=>{},'checkpoint'),/QuotaExceededError/);
   assert.equal(fetches,1);
 });
+
+
+test('video cover is downloaded into ZIP and linked as a local poster',async()=>{
+ const attachment={kind:'video',name:'video',downloadable:true,url:'https://maxvd505.okcdn.ru/video',posterUrl:'https://i.oneme.ru/cover'};
+ const files=new Map();const exporter=loadExporter(async url=>new Response(new Uint8Array([1,2]),{headers:{'content-type':url.includes('cover')?'image/jpeg':'video/mp4'}}));
+ await exporter.downloadMedia({add:(path,bytes)=>files.set(path,bytes)},{messages:[{attachments:[attachment]}]},'chat',{skippedMedia:[]},0,()=>{});
+ assert.equal(files.size,2);assert.match(attachment.posterPath,/\.jpg$/);assert.ok(files.has('chat/'+attachment.posterPath));
+});
+
+
+test('inline voice uses a compact storage key and removes base64 from completed message JSON',async()=>{
+ const data='data:audio/ogg;base64,T2dnUw==';let fetched;
+ const voice={kind:'voice',url:'inline-voice:one',inlineData:data,name:'Голосовое',downloadable:true};
+ const saved=[];const exporter=loadExporter(async url=>{fetched=url;return new Response(new Uint8Array([79,103,103,83]),{headers:{'content-type':'audio/ogg'}});},{store:{async file(id,url,value){saved.push(url);}}});
+ await exporter.downloadMedia({add(){}},{messages:[{attachments:[voice]}]},'chat',{skippedMedia:[]},0,()=>{},'checkpoint');
+ assert.equal(fetched,data);assert.deepEqual(saved,['inline-voice:one']);assert.equal(voice.inlineData,undefined);assert.match(voice.localPath,/\.ogg$/);
+});

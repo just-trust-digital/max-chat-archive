@@ -26,8 +26,8 @@
 
   function captureAudioPlay() {
     if(active?.mode!=='voice') return originalPlay.call(this);
-    const url=this.getAttribute('src') || this.currentSrc || this.src;
-    if(!/^(https?:|blob:)/i.test(url || '')) return originalPlay.call(this);
+    const url=this.src || this.currentSrc || this.getAttribute('src');
+    if(!/^(https?:|blob:)/i.test(url || '')) return Promise.resolve();
     const job=active;
     // Capture the source before playing it. Exports do not play private recordings aloud.
     (async()=>{

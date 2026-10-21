@@ -83,8 +83,8 @@ test('HTML groups days and embeds only downloaded media, with document links', (
   ArchiveFormat.add({ add(_name, value) { html = value; } }, 'chat', { title: 'Чат', messages: [
     message('October 18, 2026', [
       { kind: 'photo', name: 'Фото', localPath: 'media/photo #1.webp' },
-      { kind: 'file', mimeType: 'video/mp4', name: 'Ролик', localPath: 'media/video.mp4' },
-      { kind: 'audio', name: 'Голосовое', localPath: 'media/voice.ogg' },
+      { kind: 'file', mimeType: 'video/mp4', name: 'Ролик', localPath: 'media/video.mp4', posterPath:'media/cover.jpg' },
+      { kind: 'voice', name: 'Голосовое', localPath: 'media/voice.ogg' },
       { kind: 'audio', mimeType: 'audio/webm', name: 'Голосовое WebM', localPath: 'media/voice.webm' },
       { kind: 'file', name: 'Документ.pdf', localPath: 'media/doc.pdf' },
       { kind: 'photo', name: 'Не скачано', url: 'https://i.oneme.ru/remote.jpg' }
@@ -94,6 +94,7 @@ test('HTML groups days and embeds only downloaded media, with document links', (
   assert.match(html, /Дата неизвестна/);
   assert.match(html, /<img[^>]+src="media\/photo%20%231.webp"/);
   assert.match(html, /<video[^>]+controls/);
+  assert.match(html, /poster="media\/cover.jpg"/);
   assert.match(html, /<audio[^>]+controls/);
   assert.equal((html.match(/<audio /g) || []).length, 2);
   assert.match(html, /href="media\/doc.pdf"/);
@@ -118,4 +119,15 @@ test('Russian 24-hour timestamps and explicit anonymization preserve the origina
  assert.ok(html.includes('Переслано от: Источник'));
  const anonymous=ArchiveFormat.filter(input,{media:true,anonymize:true});
  assert.equal(anonymous[0].author,'');assert.equal(anonymous[0].forwardedFrom,'');assert.equal(anonymous[0].text,'Текст');
+});
+
+
+test('participant files and selected attachment types obey privacy options',()=>{
+ const chat={title:'Группа',participants:[{name:'Контакт',role:'admin'}],participantsStatus:'complete',messages:[{author:'Контакт',forwardedFrom:'Другой автор',attachments:[{kind:'voice',url:'https://fd.oneme.ru/a.ogg',downloadable:true},{kind:'photo',url:'https://i.oneme.ru/photo',downloadable:true},{kind:'file-or-link',downloadable:true,url:'https://fd.oneme.ru/file'}]}]};
+ const selected=ArchiveFormat.prepareChat(chat,{media:true,mediaTypes:{photo:false},participants:true});
+ assert.deepEqual(Array.from(selected.messages[0].attachments,item=>item.kind),['voice','file-or-link']);
+ const files=new Map();ArchiveFormat.add({add:(path,value)=>files.set(path,value)},'chat',selected,'html');
+ assert.ok(files.has('chat/participants.json'));assert.ok(files.get('chat/messages.html').includes('Участники: 1'));
+ const anonymous=ArchiveFormat.prepareChat(chat,{media:true,anonymize:true});const redacted=new Map();ArchiveFormat.add({add:(path,value)=>redacted.set(path,value)},'chat',anonymous,'html-json');
+ assert.ok(!redacted.has('chat/participants.json'));assert.ok(!redacted.get('chat/messages.html').includes('Контакт'));assert.equal(anonymous.participants.length,0);
 });

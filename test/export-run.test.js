@@ -29,7 +29,7 @@ test('export activates MAX before reading and returns to its report after saving
     chrome: {
       tabs: { connect: () => port, getCurrent: async () => ({ id: 10 }), update: async id => { events.push(`active:${id}`); } },
       storage: { local: { set: async () => {} } }, runtime: { getManifest: () => ({ version: 'test' }) },
-      downloads: { download: async () => { events.push('saved'); } }
+      downloads: { download: async () => { events.push('saved'); return 7; } }
     },
     ArchiveFormat: { filter: messages => messages, safeName: value => value, add() {} },
     ZipArchive: class { add() {} blob() { return new Blob(['archive']); } }

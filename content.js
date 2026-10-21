@@ -147,8 +147,12 @@
       let url;
       try { url = new URL(raw, location.href).href; } catch { continue; }
       const tag = element.tagName.toLowerCase();
-      const kind = tag === 'a' ? 'file-or-link' : tag === 'source' ? element.closest?.('audio, video')?.tagName.toLowerCase() || tag : tag;
-      items.push({ kind, url, mimeType: element.getAttribute('type') || undefined, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
+      let kind = tag === 'a' ? 'file-or-link' : tag === 'source' ? element.closest?.('audio, video')?.tagName.toLowerCase() || tag : tag;
+      if(element.closest?.('[class*="sticker"], [class*="Sticker"]')?.matches?.('[class*="sticker"], [class*="Sticker"]')) kind='sticker';
+      if(element.closest?.('[class*="videoMessage"], [class*="VideoMessage"], [class*="videoNote"]')?.matches?.('[class*="videoMessage"], [class*="VideoMessage"], [class*="videoNote"]')) kind='video-message';
+      const poster=element.getAttribute('poster') || element.closest?.('video')?.getAttribute?.('poster');
+      let posterUrl;try {if(poster && /^https?:/.test(new URL(poster,location.href).href)) posterUrl=new URL(poster,location.href).href;} catch {}
+      items.push({ kind, url, posterUrl, mimeType: element.getAttribute('type') || undefined, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
     }
     [...row.querySelectorAll('.attachAudio')].filter(element=>element.matches?.('.attachAudio')).forEach((_voice,index)=>items.push({kind:'voice',url:null,downloadable:false,source:'voice-tile',name:`Голосовое сообщение ${index+1}`}));
     photoTiles(row).forEach((_tile, index) => items.push({ kind: 'photo', url: null, downloadable: false, source: 'photo-tile', name: `photo-${index + 1}` }));
@@ -166,14 +170,16 @@
     }
     if (!body && !textNode.cloneNode) body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
     const time = message.querySelector('time')?.getAttribute('datetime') || message.querySelector('time, .meta--text, .bubbleContent > .meta')?.textContent?.trim() || message.querySelector('[class*="meta"]')?.textContent?.trim() || '';
-    const authorElement = row.querySelector('.bubbleContent .header .name') || row.querySelector('.bubbleContent button.header') || row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
+    const authorElement = row.querySelector('.bubbleContent > .header .name') || row.querySelector('.bubbleContent > .header > button.header') || row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
     const authorName = authorElement?.querySelector?.('.name') || authorElement;
     const author = authorName?.innerText?.trim() || authorName?.textContent?.trim() || '';
     const reactions = [...row.querySelectorAll('[class*="reactions"] [class*="reaction"]')].map(el => el.textContent.trim()).filter(Boolean);
     const attachments = attachmentsOf(row);
-    const forwarded = row.querySelector('[class*="forward"]');
+    const mark=row.querySelector('.link .mark');
+    const isForwarded=mark && /Переслано|Forwarded/i.test(mark.querySelector('.label')?.textContent || '');
+    const forwarded = row.querySelector('[class*="forward"]') || (isForwarded ? mark : null);
     const forwardedFrom = forwarded?.querySelector('.name, .author')?.textContent?.trim() || '';
-    const reply = row.querySelector('.link .mark');
+    const reply = !isForwarded ? mark : null;
     const replyTo = reply ? {author:reply.querySelector('.author .name')?.textContent?.trim() || '',text:reply.querySelector(':scope > .text')?.textContent?.trim() || ''} : undefined;
     return { dateLabel, time, author, forwardedFrom, replyTo, direction: row.classList.contains('messageWrapper--isOut') ? 'out' : 'in', text: body, reactions, attachments };
   }
@@ -228,7 +234,10 @@
           ready = true;
           try { button.click(); } catch { finish(null); }
         }
-        if (event.data.type === 'captured') finish({ url: event.data.href, name: event.data.name });
+        if (event.data.type === 'captured') {
+          const inline=mode==='voice' && /^data:audio\//i.test(event.data.href || '');
+          finish({url:inline?`inline-voice:${nonce}`:event.data.href,inlineData:inline?event.data.href:undefined,name:event.data.name});
+        }
       }
       window.addEventListener('message', onMessage);
       window.postMessage({ marker, type: 'arm', nonce, mode }, location.origin);
@@ -250,7 +259,7 @@
         viewer = document.querySelector('dialog[open]');
         const video = viewer?.querySelector('video');
         const videoUrl = video?.currentSrc || video?.getAttribute?.('src') || video?.querySelector?.('source[src]')?.getAttribute('src');
-        if (videoUrl && /^https?:\/\//i.test(videoUrl)) return {kind: 'video', url: videoUrl, quality: 'viewer'};
+        if (videoUrl && /^https?:\/\//i.test(videoUrl)) return {kind: 'video', url: videoUrl, posterUrl:video.getAttribute?.('poster') || undefined, quality: 'viewer'};
         const candidates = viewer ? [...viewer.querySelectorAll('img[src]')].filter(img => !img.closest('[class*="avatar"]')).map(image => ({image, url: [image.currentSrc, image.getAttribute?.('src')].find(url => /^https?:\/\//i.test(url || ''))})).filter(item => item.url) : [];
         const candidate = candidates.sort((a,b) => (b.image.naturalWidth || 0) - (a.image.naturalWidth || 0))[0];
         if (!candidate) continue;
@@ -323,7 +332,7 @@
         assertActive(); const key=`${messageKey}:voice:${voiceIndex}`;
         if(!cache.has(key)) await resolveFile(key,voices[voiceIndex].name,()=>captureButton(voiceButtons[voiceIndex],'voice'));
         const captured=cache.get(key);
-        if(captured?.url) Object.assign(voices[voiceIndex],{url:captured.url,downloadable:true,source:'voice-url'});
+        if(captured?.url) Object.assign(voices[voiceIndex],{url:captured.url,inlineData:captured.inlineData,downloadable:true,source:'voice-url'});
         else voices[voiceIndex].resolutionError='voice_url_unavailable';
       }
       await onRow(index,items[index]);
@@ -357,6 +366,7 @@
     for (let index = -best.offset; index < older.length; index++) {
       const existing = current[index + best.offset];
       if (existing && !existing.dateLabel && older[index].dateLabel) existing.dateLabel = older[index].dateLabel;
+      if (existing && !existing.author && older[index].author) existing.author=older[index].author;
     }
     return { items: carryDates(prefix.concat(current)), gap: false };
   }
@@ -603,6 +613,7 @@
           const own=/\(you\)|вы|владелец.*вы/i.test(role);
           found.set(name,{name,role,self:own});
         }
+        progress({title:openedTitle(),count:0,stage:'participants',memberCount:found.size});
         if(expected && found.size>=expected) break;
         const scroller=cells[0] && scrollParent(cells[0]);
         if(!scroller) break;
@@ -613,7 +624,7 @@
       }
       return {participants:[...found.values()],participantsStatus:expected && found.size===expected?'complete':'partial'};
     } finally {
-      if(opened) {const back=[...document.querySelectorAll(backSelector)].find(button=>!oldBack.has(button));if(back){back.click();await wait(150);}}
+      if(opened) {const back=[...document.querySelectorAll(backSelector)].filter(button=>!oldBack.has(button)).at(-1);if(back){back.click();await wait(150);}}
     }
   }
   let activeOperation = null;

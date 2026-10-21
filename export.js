@@ -12,9 +12,9 @@
   let port, sequence = 0, pending = new Map(), chats = [], discoveryComplete = false, running = false, stopped = false, currentAbort = null;
   const durable = typeof CheckpointStore === 'undefined' ? null : CheckpointStore;
   let recoveryBusy=false;
-  const defaults = { format: 'html-json', split: 'by-chat', media: true, downloadMedia: false, links: true, reactions: true, limit: 10000 };
+  const defaults = { format: 'html-json', split: 'by-chat', media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
 
-  function note(message, error = false) { status.textContent = message; status.style.color = error ? '#b52831' : ''; }
+  function note(message, error = false) { status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
   function stage(message, completed = null, total = null) {
     $('progress-text').textContent = message;
     stageProgress.hidden = false;
@@ -62,20 +62,31 @@
     }
   }
   function visibilityPrompt(show) {
-    const dialog = $('visibility-dialog');
-    if (show && !dialog.open) dialog.showModal?.();
-    if (!show && dialog.open) dialog.close?.();
+    const alert=$('visibility-alert');
+    if(!alert) return;
+    const wasHidden=alert.hidden;alert.hidden=!show;
+    if(show && wasHidden) alert.scrollIntoView?.({block:'center',behavior:'instant'});
   }
+  function updatePeriod() {
+    const from=$('from')?.value,to=$('to')?.value, display=value=>value.split('-').reverse().join('.');
+    if($('period-summary')) $('period-summary').textContent=`${from?'С '+display(from):'С первого сообщения'} ${to?'по '+display(to):'до последнего сообщения'}`;
+    if(!from && !to && $('period-summary')) $('period-summary').textContent='С первого до последнего сообщения';
+  }
+  function updatePrivacy() {if($('participants')) $('participants').disabled=!!$('anonymize')?.checked;}
+  function recoveryControls(disabled) {$('recovery-list')?.querySelectorAll('button').forEach(button=>{button.disabled=disabled;});}
   function scope() { return document.querySelector('input[name="scope"]:checked').value; }
   function options() {
     const value = {
       format: $('format').value,
       split: $('split').value,
       from: $('from').value, to: $('to').value,
-      media: $('media').checked, downloadMedia: $('download-media').checked,
+      media: $('media').checked, mediaTypes:Object.fromEntries(['photo','video','voice','videoMessage','audio','sticker','gif','file'].map(key=>[key,$('type-'+key)?.checked ?? true])),
+      anonymize:!!$('anonymize')?.checked, participants:!!$('participants')?.checked && !$('anonymize')?.checked,
+      downloadMedia: $('download-media').checked,
       links: $('links').checked, reactions: $('reactions').checked,
       limit: Number($('limit').value)
     };
+    if($('type-photo')) value.media=Object.values(value.mediaTypes).some(Boolean);
     if (!Number.isInteger(value.limit) || value.limit < 1 || value.limit > 100000) throw new Error('Укажите максимум от 1 до 100 000 сообщений.');
     if (value.from && value.to && value.from > value.to) throw new Error('Начальная дата позже конечной.');
     return value;
@@ -146,7 +157,10 @@
   async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null) {
     let total = initialBytes;
     const used = new Map();
-    const entries = [...new Map(chat.messages.flatMap(message => message.attachments).filter(attachment => attachment.downloadable && attachment.url).map(attachment => [attachment.url, attachment])).values()];
+    const media=chat.messages.flatMap(message=>message.attachments);
+    const candidates=media.filter(attachment=>attachment.downloadable && attachment.url);
+    const posters=candidates.filter(attachment=>attachment.posterUrl).map(attachment=>({kind:'photo',name:'Обложка видео',url:attachment.posterUrl,downloadable:true}));
+    const entries=[...new Map([...candidates,...posters].map(attachment=>[attachment.url,attachment])).values()];
     let completed = 0;
     onProgress(completed, entries.length);
     for (const attachment of entries) {
@@ -154,9 +168,9 @@
       if (!attachment.downloadable || !attachment.url || used.has(attachment.url)) continue;
       let timer;
       try {
-        const url = new URL(attachment.url);
+        const url = new URL(attachment.inlineData || attachment.url);
         const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
-        const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.url) && attachment.url.length<=36*1024*1024;
+        const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=36*1024*1024;
         if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost)) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= 250 * 1024 * 1024) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
@@ -187,7 +201,8 @@
       finally { clearTimeout(timer); currentAbort = null; completed++; onProgress(completed, entries.length); }
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
-      if (used.has(attachment.url)) attachment.localPath = used.get(attachment.url);
+      if (used.has(attachment.url)) {attachment.localPath = used.get(attachment.url);delete attachment.inlineData;}
+      if (attachment.posterUrl && used.has(attachment.posterUrl)) attachment.posterPath=used.get(attachment.posterUrl);
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
       if (attachment.source === 'download-button') report.skippedMedia.push({ name: attachment.name, reason: 'Веб-версия не показывает прямой адрес файла' });
@@ -198,7 +213,17 @@
   }
   async function saveBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
-    try { await chrome.downloads.download({ url, filename, saveAs: false }); }
+    try {
+      const id=await chrome.downloads.download({ url, filename, saveAs: false });
+      if(!Number.isInteger(id)) throw new Error('Браузер не подтвердил запуск скачивания. Проверьте список загрузок.');
+      if(chrome.downloads.onChanged && chrome.downloads.search) await new Promise((resolve,reject)=>{
+        const finish=(error)=>{clearTimeout(timer);chrome.downloads.onChanged.removeListener(changed);error?reject(error):resolve();};
+        const changed=delta=>{if(delta.id!==id) return;if(delta.state?.current==='complete') finish();if(delta.error || delta.state?.current==='interrupted') finish(new Error(`Загрузка прервана браузером: ${delta.error?.current || 'interrupted'}`));};
+        const timer=setTimeout(()=>finish(new Error('Браузер не подтвердил завершение скачивания. Проверьте список загрузок.')),120000);
+        chrome.downloads.onChanged.addListener(changed);
+        chrome.downloads.search({id}).then(items=>{const item=items[0];if(item?.state==='complete') finish();else if(item?.state==='interrupted') finish(new Error(`Загрузка прервана: ${item.error || 'interrupted'}`));},finish);
+      });
+    }
     finally { setTimeout(() => URL.revokeObjectURL(url), 60000); }
   }
   async function saveZip(zip, filename) { await saveBlob(zip.blob(), filename); }
@@ -209,7 +234,7 @@
       const selected = selection(), settings = options();
       if (!selected.length) throw new Error('Выберите хотя бы один чат.');
       const perChat = settings.split === 'by-chat';
-      running = true; stopped = false; start.disabled = true; cancel.hidden = false;
+      running = true; stopped = false; recoveryControls(true); start.disabled = true; cancel.hidden = false;
       $('progress-panel').hidden = false; log.replaceChildren(); updateSelection();
       $('progress').max = selected.length; $('progress').value = 0;
       $('overall-text').textContent = `Обработано 0 из ${selected.length} чатов`;
@@ -239,7 +264,7 @@
         try {
           const result = await call('export', { chat: info, options: settings }, value => {
             visibilityPrompt(value.stage === 'visibility');
-            const phase = value.stage === 'visibility' ? 'Ожидание показа MAX — откройте вкладку MAX' : value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
+            const phase = value.stage === 'visibility' ? 'Ожидание показа MAX — откройте вкладку MAX' : value.stage === 'participants' ? `Чтение списка участников: ${value.memberCount || 0}` : value.stage === 'opening' ? 'Открытие чата' : value.stage === 'waiting' ? 'MAX подготавливает историю' : value.stage === 'history-ready' ? 'История прочитана' : value.stage === 'resolving' ? 'Получение адресов файлов' : 'Загрузка истории';
             const files = value.stage === 'resolving' ? `; получение адресов: ${value.fileCount || 0} из ${value.fileTotal || 0}${value.fileName ? `; ${value.fileName}, ${value.fileElapsed || 0} с` : ''}` : '';
             stage(`Чат ${index + 1} из ${selected.length}: ${phase}, найдено ${value.count} сообщений${files}`, value.stage === 'resolving' ? value.fileCount : null, value.fileTotal);
             rows[index].textContent = `${value.title} — ${phase[0].toLowerCase() + phase.slice(1)}, ${value.count} сообщений`;
@@ -264,7 +289,7 @@
           await saveCopy(result,'ready');
           stage(`Чат ${index + 1} из ${selected.length}: создание ZIP…`);
           ArchiveFormat.add(zip, path, result, settings.format);
-          const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, history: result.history };
+          const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, participants:result.participants?.length || 0,participantsStatus:result.participantsStatus || 'unavailable', history: result.history };
           if (perChat) {
             zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), mediaBytes: chatMediaBytes }, null, 2));
             await saveZip(zip, `max-archive-${path}.zip`);
@@ -300,29 +325,54 @@
       }
     }
   }
-  async function recoverCopy(id) {
-    if(running || recoveryBusy) return;
-    recoveryBusy=true;start.disabled=true;
+  async function recoverCopy(id,feedback=null,button=null) {
+    const show=(text,error=false)=>{if(feedback){feedback.textContent=text;feedback.className=`recovery-feedback${error?' error':''}`;}note(text,error);};
+    if(running || recoveryBusy) {show('Дождитесь завершения текущего экспорта или скачивания копии.');return false;}
+    recoveryBusy=true;start.disabled=true;recoveryControls(true);
+    if(button) button.textContent='Создаём ZIP…';
+    show('Чтение сохранённой копии…');
     try {
+      await new Promise(resolve=>setTimeout(resolve,0));
       const saved=await durable.get(id);
-      if(!saved) throw new Error('Сохранённая копия не найдена.');
-      const files=await durable.files(id), zip=new ZipArchive(), chat=saved.chat;
+      if(!saved?.chat?.messages) throw new Error('Сохранённая копия не найдена или повреждена.');
+      const files=await durable.files(id), zip=new ZipArchive();
+      const chat=ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(saved.chat,saved.settings):saved.chat;
       const byUrl=new Map(files.map(file=>[file.url,file]));
+      let recoveredVoices=0;
       chat.messages=ArchiveFormat.filter(chat.messages,saved.settings);
       for(const message of chat.messages) for(const attachment of message.attachments) {
-        delete attachment.localPath;
+        delete attachment.localPath;delete attachment.posterPath;
+        if(!byUrl.has(attachment.url) && attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=36*1024*1024) {
+          const binary=atob(attachment.inlineData.split(',')[1]);
+          if(binary.length<=25*1024*1024) {
+            const mimeType=attachment.inlineData.slice(5).split(';')[0];
+            const ext={'audio/ogg':'.ogg','audio/mpeg':'.mp3','audio/wav':'.wav','audio/webm':'.webm','audio/mp4':'.m4a','audio/aac':'.aac','audio/opus':'.opus'}[mimeType] || '.audio';
+            const value={url:attachment.url,localPath:`media/recovered-voice-${++recoveredVoices}${ext}`,mimeType,bytes:Uint8Array.from(binary,char=>char.charCodeAt(0))};
+            files.push(value);byUrl.set(attachment.url,value);
+          }
+        }
         const file=byUrl.get(attachment.url);
-        if(file) {attachment.localPath=file.localPath;attachment.mimeType=file.mimeType;}
+        if(file) {attachment.localPath=file.localPath;attachment.mimeType=file.mimeType;delete attachment.inlineData;}
+        if(attachment.posterUrl && byUrl.has(attachment.posterUrl)) attachment.posterPath=byUrl.get(attachment.posterUrl).localPath;
       }
-      const referenced=new Set(chat.messages.flatMap(message=>message.attachments).map(item=>item.url));
-      for(const file of files) if(referenced.has(file.url)) zip.add(`${saved.path}/${file.localPath}`,file.bytes);
+      const referenced=new Set(chat.messages.flatMap(message=>message.attachments).flatMap(item=>[item.url,item.posterUrl].filter(Boolean)));
+      let count=0;
+      for(const file of files) if(referenced.has(file.url)) {
+        show(`Создание ZIP: файлов ${++count} из ${files.length}…`);
+        await new Promise(resolve=>setTimeout(resolve,0));
+        const bytes=file.bytes instanceof Uint8Array?file.bytes : file.bytes?.arrayBuffer?new Uint8Array(await file.bytes.arrayBuffer()):ArrayBuffer.isView(file.bytes)?new Uint8Array(file.bytes.buffer,file.bytes.byteOffset,file.bytes.byteLength):file.bytes instanceof ArrayBuffer?new Uint8Array(file.bytes):Array.isArray(file.bytes)?new Uint8Array(file.bytes):null;
+        if(!bytes) throw new Error('В сохранённой копии повреждены данные вложения. Сообщения остаются в хранилище.');
+        zip.add(`${saved.path}/${file.localPath}`,bytes);
+      }
       ArchiveFormat.add(zip,saved.path,chat,saved.settings.format);
-      const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath);
-      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history}],missingFiles:missing.length},null,2));
+      const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath && item.kind!=='file-or-link');
+      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],missingFiles:missing.length},null,2));
+      show('Скачивание восстановленного ZIP…');
       await saveZip(zip,`max-recovered-${saved.path}.zip`);
-      note(`Сохранённая копия скачана. Сообщений: ${chat.messages.length}; файлов без локальной копии: ${missing.length}.`);
-    } catch(error) {note(error.message,true);}
-    finally {recoveryBusy=false;start.disabled=false;}
+      show(`Копия скачана. Сообщений: ${chat.messages.length}; файлов без локальной копии: ${missing.length}.`);
+      return true;
+    } catch(error) {show(`Не удалось скачать копию: ${error.message}`,true);return false;}
+    finally {recoveryBusy=false;start.disabled=running;recoveryControls(running);if(button) button.textContent='Скачать сохранённое';}
   }
   async function renderRecovery() {
     if(!durable) return;
@@ -339,10 +389,11 @@
         info.append(title,detail);
         const actions=document.createElement('div');actions.className='actions';
         const download=document.createElement('button');download.className='secondary';download.textContent='Скачать сохранённое';download.disabled=running;
-        download.addEventListener('click',()=>recoverCopy(copy.id));
+        const feedback=document.createElement('div');feedback.className='recovery-feedback';feedback.setAttribute('role','status');
+        download.addEventListener('click',()=>recoverCopy(copy.id,feedback,download));
         const remove=document.createElement('button');remove.className='text-button';remove.textContent='Удалить копию';remove.disabled=running;
         remove.addEventListener('click',async()=>{if(running || recoveryBusy) return;try{await durable.remove(copy.id);await renderRecovery();}catch(error){note(error.message,true);}});
-        actions.append(download,remove);row.append(info,actions);container.append(row);
+        actions.append(download,remove);row.append(info,actions,feedback);container.append(row);
       }
     } catch(error) {note(`Сохранённые копии недоступны: ${error.message}`,true);}
   }
@@ -351,7 +402,9 @@
     try {
       const saved = (await chrome.storage.local.get('settings')).settings || defaults;
       for (const key of ['format', 'split', 'from', 'to', 'limit']) if (saved[key] != null && $(key)) $(key).value = saved[key];
-      for (const [key, id] of [['media', 'media'], ['downloadMedia', 'download-media'], ['links', 'links'], ['reactions', 'reactions']]) $(id).checked = saved[key] ?? defaults[key];
+      for (const [key, id] of [['anonymize','anonymize'],['participants','participants'],['media', 'media'], ['downloadMedia', 'download-media'], ['links', 'links'], ['reactions', 'reactions']]) if($(id)) $(id).checked = saved[key] ?? (key==='participants'?true:defaults[key]);
+      for(const key of ['photo','video','voice','videoMessage','audio','sticker','gif','file']) if($('type-'+key)) $('type-'+key).checked=saved.mediaTypes?.[key] ?? (saved.media!==false);
+      updatePeriod();updatePrivacy();
       connect();
       const current = await call('current');
       note(current.title ? `Открыт чат: ${current.title}` : 'Выберите чат в MAX.');
@@ -364,9 +417,9 @@
   $('select-none').addEventListener('click', () => setChatSelection(false));
   start.addEventListener('click', run);
   function stopExport() { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
-  $('show-max').addEventListener('click', () => showMax().catch(error => note(error.message, true)));
-  $('visibility-stop').addEventListener('click', stopExport);
-  $('visibility-dialog').addEventListener('cancel', event => { event.preventDefault(); stopExport(); });
+  $('from')?.addEventListener('change',updatePeriod);
+  $('to')?.addEventListener('change',updatePeriod);
+  $('anonymize')?.addEventListener('change',updatePrivacy);
   cancel.addEventListener('click', stopExport);
   init();
 })();

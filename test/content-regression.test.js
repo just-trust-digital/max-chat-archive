@@ -700,3 +700,29 @@ test('available group members are exported with names and roles, and anonymizati
  assert.equal(result.participants.length,3);assert.equal(result.participantsStatus,'complete');assert.equal(result.participants[1].self,true);assert.ok(closed);
  await api.collectParticipants({participants:true,anonymize:true},()=>{},()=>{});assert.equal(clicks,1);
 });
+
+
+test('MAX forwarded .link .mark is metadata rather than a reply or duplicated body author',()=>{
+ const row=messageRow({text:'Документ'});const original=row.querySelector;
+ const mark={querySelector:selector=>({textContent:selector==='.label'?'Переслано:':'Автор оригинала'})};
+ row.querySelector=selector=>selector==='.link .mark'?mark:original(selector);
+ const item=loadContent({}).extract(row,'October 6, 2026');
+ assert.equal(item.forwardedFrom,'Автор оригинала');assert.equal(item.replyTo,undefined);assert.equal(item.text,'Документ');
+});
+
+
+test('empty avatar button cannot hide sender name and continuation messages inherit it',()=>{
+ const first=messageRow({author:'Анна',text:'Первое'}),second=messageRow({author:'',text:'Второе'});
+ const get=first.querySelector;first.querySelector=selector=>selector.startsWith('button.header,')?{textContent:'',innerText:''}:get(selector);
+ const api=loadContent({querySelectorAll:()=>[first,second]});
+ assert.equal(api.extract(first,'').author,'Анна');
+ const messages=api.snapshot();assert.equal(messages[1].author,'Анна');assert.equal(messages[1].text,'Второе');
+});
+
+
+test('loading older headers fills sender names in already collected continuation bubbles',()=>{
+ const api=loadContent({});const item=(text,author)=>({time:'12:00',direction:'in',text,author,attachments:[]});
+ const existing=[item('one',''),item('two',''),item('three','')];
+ const older=[item('zero','Анна'),item('one','Анна'),item('two','Анна'),item('three','Анна')];
+ const merged=api.mergeOlder(existing,older);assert.equal(merged.gap,false);assert.ok(merged.items.every(message=>message.author==='Анна'));
+});
