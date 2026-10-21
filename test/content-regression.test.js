@@ -7,7 +7,7 @@ const path = require('node:path');
 function loadContent(document, { instantWait = false, capture = null, runtime = null, pageTimer = setTimeout } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
   const instrumented = (instantWait ? source.replace(/const wait = ms =>[^\n]+/, 'const wait = () => Promise.resolve();') : source)
-    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto };})();');
+    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto, collectParticipants };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -677,4 +677,26 @@ test('recovery checkpoint respects a limit smaller than the mounted MAX window',
   await loadContent(document,{instantWait:true}).exportOpen({limit:1},()=>{},()=>{},async value=>copies.push(JSON.parse(JSON.stringify(value))));
   assert.ok(copies.every(copy=>copy.messages.length===1));
   assert.equal(copies[0].messages[0].text,'Latest');
+});
+
+
+test('MAX voice tiles are inventoried even without an audio element',()=>{
+ const voice={matches:selector=>selector==='.attachAudio'};
+ const row={querySelectorAll:selector=>selector==='.attachAudio'?[voice]:[]};
+ const files=loadContent({}).attachmentsOf(row);
+ assert.equal(files.length,1);assert.equal(files[0].kind,'voice');assert.equal(files[0].source,'voice-tile');
+});
+
+test('available group members are exported with names and roles, and anonymization avoids opening the list',async()=>{
+ let opened=false,closed=false,clicks=0;
+ const cells=['Катерина','Just Trust','APART BEILIN'].map((name,index)=>({querySelector:selector=>selector.includes('.name')?{textContent:name}:{textContent:index===1?'owner (you)':'admin'}}));
+ const panel={querySelector:()=>({}),querySelectorAll:()=>cells};
+ const tab={textContent:'Members',parentElement:panel,click(){}};
+ const back={click(){closed=true;}};
+ const opener={textContent:'Тест 1 of 3 online',click(){opened=true;clicks++;}};
+ const doc={title:'MAX',querySelector:selector=>selector==='.openedChat'?{querySelector:()=>({textContent:'Тест'})}:opener,querySelectorAll:selector=>selector==='button'?(opened?[tab]:[]):(opened?[back]:[])};
+ const api=loadContent(doc,{instantWait:true});
+ const result=await api.collectParticipants({participants:true},()=>{},()=>{});
+ assert.equal(result.participants.length,3);assert.equal(result.participantsStatus,'complete');assert.equal(result.participants[1].self,true);assert.ok(closed);
+ await api.collectParticipants({participants:true,anonymize:true},()=>{},()=>{});assert.equal(clicks,1);
 });

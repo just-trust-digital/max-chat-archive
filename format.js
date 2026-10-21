@@ -33,17 +33,45 @@ const ArchiveFormat = (() => {
     }
     return null;
   }
+  function clock(value) {
+    const match=String(value || '').match(/(?:T|\b)(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+    if(!match) return '';
+    let hour=Number(match[1]);
+    if(match[3]) hour=hour%12 + (match[3].toUpperCase()==='PM'?12:0);
+    return `${String(hour).padStart(2,'0')}:${match[2]}`;
+  }
+  function displayDate(item) {const date=dateOf(item);return date?date.split('-').reverse().join('.'):item.dateLabel || '';}
+  function category(entry) {
+    const kind=String(entry.kind || ''), type=String(entry.mimeType || ''), name=String(entry.name || entry.url || '').toLowerCase();
+    if(kind==='voice') return 'voice';
+    if(kind==='video-message') return 'videoMessage';
+    if(kind==='sticker') return 'sticker';
+    if(kind==='gif' || type==='image/gif' || /\.gif(?:$|\?)/.test(name)) return 'gif';
+    if(kind==='audio' || type.startsWith('audio/')) return 'audio';
+    if(kind==='video' || type.startsWith('video/')) return 'video';
+    if(['photo','img','image'].includes(kind) || type.startsWith('image/')) return 'photo';
+    return kind==='file-or-link' ? 'link' : 'file';
+  }
+  function selected(entry,options) {const type=category(entry);return type==='link'?!!options.links:options.media!==false && options.mediaTypes?.[type]!==false;}
+  function prepareChat(chat,options) {
+    return {...chat, messages:filter(chat.messages || [],options), participants:options.anonymize || options.participants===false ? [] : (chat.participants || []), participantsStatus:options.anonymize?'excluded':chat.participantsStatus};
+  }
   function filter(messages, options) {
-    return messages.filter(item => {
+    return messages.filter(Boolean).filter(item => {
       const raw = dateOf(item);
       if (!raw) return true;
       return (!options.from || raw >= options.from) && (!options.to || raw <= options.to);
     }).map(item => ({
       ...item,
       date: dateOf(item),
+      time: clock(item.time),
+      edited: item.edited || /ред\.|edited/i.test(item.time || ''),
+      author: options.anonymize ? '' : item.author,
+      forwardedFrom: options.anonymize ? '' : item.forwardedFrom,
+      replyTo: item.replyTo ? {...item.replyTo, author:options.anonymize?'':item.replyTo.author} : undefined,
       reactions: options.reactions ? item.reactions : [],
-      attachments: options.media ? item.attachments : [],
-      links: options.links ? item.attachments.filter(entry => entry.kind === 'file-or-link').map(entry => entry.url) : []
+      attachments: (item.attachments || []).filter(entry=>selected(entry,options)),
+      links: options.links ? (item.attachments || []).filter(entry => entry.kind === 'file-or-link').map(entry => entry.url) : []
     }));
   }
   function html(chat) {
@@ -62,8 +90,8 @@ const ArchiveFormat = (() => {
       // because the reader opened its HTML file.
       if (local) {
         if (['photo', 'img', 'image', 'sticker'].includes(entry.kind) || type.startsWith('image/') || /^(jpe?g|png|webp|gif|avif|bmp|svg)$/.test(extension)) preview = `<a class="preview" href="${href}"><img src="${href}" alt="${name}" loading="lazy" decoding="async"></a>`;
-        else if (entry.kind !== 'audio' && !type.startsWith('audio/') && (entry.kind === 'video' || type.startsWith('video/') || /^(mp4|webm|mov|m4v)$/.test(extension))) preview = `<video src="${href}" controls preload="none" playsinline aria-label="${name}"></video>`;
-        else if (entry.kind === 'audio' || type.startsWith('audio/') || /^(mp3|ogg|opus|wav|m4a|aac|flac)$/.test(extension)) preview = `<audio src="${href}" controls preload="none" aria-label="${name}"></audio>`;
+        else if (entry.kind !== 'audio' && !type.startsWith('audio/') && (entry.kind === 'video' || type.startsWith('video/') || /^(mp4|webm|mov|m4v)$/.test(extension))) preview = `<video src="${href}#t=0.1" controls preload="metadata" playsinline aria-label="${name}"></video>`;
+        else if (['audio','voice'].includes(entry.kind) || type.startsWith('audio/') || /^(mp3|ogg|opus|wav|m4a|aac|flac)$/.test(extension)) preview = `<audio src="${href}" controls preload="none" aria-label="${name}"></audio>`;
       }
       return `<div class="attachment">${preview}<a class="file-link" href="${href}" rel="noreferrer">${name}</a></div>`;
     }
@@ -72,17 +100,21 @@ const ArchiveFormat = (() => {
       const date = dateOf(item), day = date || item.dateLabel || 'Дата неизвестна';
       const separator = day !== previousDay ? `<h2 class="day-separator">${escape(date ? date.split('-').reverse().join('.') : day)}</h2>` : '';
       previousDay = day;
-      return `${separator}<article class="msg ${item.direction === 'out' ? 'out' : ''}"><div class="meta">${escape(item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник'))} · ${escape(date || item.dateLabel)} ${escape(item.time)}</div><div class="body">${escape(item.text).replace(/\n/g, '<br>')}</div>${(item.attachments || []).map(attachment).join('')}${item.reactions?.length ? `<div class="reactions">${escape(item.reactions.join(' · '))}</div>` : ''}</article>`;
+      return `${separator}<article class="msg ${item.direction === 'out' ? 'out' : ''}"><div class="meta">${escape(item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник'))} · ${escape(displayDate(item))} ${escape(clock(item.time))}</div><div class="body">${item.forwardedFrom ? `<div class="forwarded">Переслано от: ${escape(item.forwardedFrom)}</div>` : ''}${item.replyTo ? `<div class="forwarded">Ответ: ${escape(item.replyTo.author || '')} ${escape(item.replyTo.text || '')}</div>` : ''}${escape(item.text).replace(/\n/g, '<br>')}</div>${(item.attachments || []).map(attachment).join('')}${item.reactions?.length ? `<div class="reactions">${escape(item.reactions.join(' · '))}</div>` : ''}</article>`;
     }).join('');
-    return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(chat.title)}</title><style>*{box-sizing:border-box}body{font:15px/1.5 Arial,sans-serif;background:#f2f5fa;color:#17233a;margin:0;padding:24px}.wrap{max-width:850px;margin:auto;overflow-wrap:anywhere}h1{font-size:25px}.day-separator{font-size:14px;font-weight:600;text-align:center;color:#526178;margin:28px 0 16px}.msg{background:white;border:1px solid #dce3ed;border-radius:13px;margin:12px 15% 12px 0;padding:13px;min-width:0}.msg.out{margin:12px 0 12px 15%;background:#e9f3ff}.meta,.reactions{color:#526178;font-size:12px}.body{white-space:normal;margin-top:7px}.attachment{margin-top:12px;min-width:0}.attachment img,.attachment video{display:block;max-width:100%;max-height:480px;height:auto;border-radius:6px}.attachment audio{display:block;width:100%;max-width:420px}.preview{display:block;width:fit-content;max-width:100%}.file-link{display:inline-block;max-width:100%;padding:6px 0;overflow-wrap:anywhere}a{color:#1563dc}a:focus-visible,audio:focus-visible,video:focus-visible{outline:2px solid #1563dc;outline-offset:4px}@media(max-width:600px){body{padding:12px}.msg{margin-right:5%}.msg.out{margin-left:5%}.attachment img,.attachment video{max-height:360px}}</style></head><body><div class="wrap"><h1>${escape(chat.title)}</h1><p>${chat.messages.length} сообщений</p>${blocks}</div></body></html>`;
+    return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(chat.title)}</title><style>*{box-sizing:border-box}body{font:15px/1.5 Arial,sans-serif;background:#f2f5fa;color:#17233a;margin:0;padding:24px}.wrap{max-width:850px;margin:auto;overflow-wrap:anywhere}h1{font-size:25px}.day-separator{font-size:14px;font-weight:600;text-align:center;color:#526178;margin:28px 0 16px}.msg{background:white;border:1px solid #dce3ed;border-radius:13px;margin:12px 15% 12px 0;padding:13px;min-width:0}.msg.out{margin:12px 0 12px 15%;background:#e9f3ff}.meta,.reactions{color:#526178;font-size:12px}.body{white-space:normal;margin-top:7px}.attachment{margin-top:12px;min-width:0}.attachment img,.attachment video{display:block;max-width:100%;max-height:480px;height:auto;border-radius:6px}.attachment audio{display:block;width:100%;max-width:420px}.preview{display:block;width:fit-content;max-width:100%}.file-link{display:inline-block;max-width:100%;padding:6px 0;overflow-wrap:anywhere}a{color:#1563dc}a:focus-visible,audio:focus-visible,video:focus-visible{outline:2px solid #1563dc;outline-offset:4px}@media(max-width:600px){body{padding:12px}.msg{margin-right:5%}.msg.out{margin-left:5%}.attachment img,.attachment video{max-height:360px}}@media(prefers-color-scheme:dark){:root{color-scheme:dark}body{background:#101820;color:#e2eaf2}.msg{background:#1b2835;border-color:#354656}.msg.out{background:#203b50}.meta,.reactions,.day-separator,.forwarded{color:#b5c5d5}a{color:#77b9ff}}.forwarded{font-size:13px;color:#526178;border-left:2px solid #7995b3;padding-left:9px;margin-bottom:8px}</style></head><body><div class="wrap"><h1>${escape(chat.title)}</h1><p>${chat.messages.length} сообщений</p>${blocks}</div></body></html>`;
   }
-  function txt(chat) { return `${chat.title}\n${chat.messages.length} сообщений\n\n${chat.messages.map(item => `[${item.date || item.dateLabel} ${item.time}] ${item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник')}\n${item.text}${item.attachments.length ? '\n' + item.attachments.map(a => `${a.name || a.kind}: ${a.localPath || a.url || 'ссылка недоступна'}`).join('\n') : ''}`).join('\n\n')}`; }
-  function csv(chat) { return '\ufeff' + ['date', 'time', 'author', 'direction', 'text', 'attachments', 'reactions'].map(csvCell).join(',') + '\r\n' + chat.messages.map(item => [item.date || item.dateLabel, item.time, item.author, item.direction, item.text, item.attachments.map(a => a.localPath || a.url || a.name).join(' | '), item.reactions.join(' | ')].map(csvCell).join(',')).join('\r\n'); }
+  function txt(chat) { return `${chat.title}\n${chat.messages.length} сообщений\n\n${chat.messages.map(item => `[${displayDate(item)} ${clock(item.time)}] ${item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник')}\n${item.text}${item.attachments.length ? '\n' + item.attachments.map(a => `${a.name || a.kind}: ${a.localPath || a.url || 'ссылка недоступна'}`).join('\n') : ''}`).join('\n\n')}`; }
+  function csv(chat) { return '\ufeff' + ['date', 'time', 'author', 'direction', 'text', 'attachments', 'reactions'].map(csvCell).join(',') + '\r\n' + chat.messages.map(item => [displayDate(item), clock(item.time), item.author, item.direction, item.text, item.attachments.map(a => a.localPath || a.url || a.name).join(' | '), item.reactions.join(' | ')].map(csvCell).join(',')).join('\r\n'); }
   function add(zip, path, chat, format) {
+    if(chat.participants?.length) {
+      zip.add(`${path}/participants.json`,JSON.stringify({status:chat.participantsStatus || 'partial',participants:chat.participants},null,2));
+      zip.add(`${path}/participants.csv`,'\ufeff'+['Имя','Роль','Ссылка'].map(csvCell).join(',')+'\r\n'+chat.participants.map(item=>[item.name,item.role,item.url].map(csvCell).join(',')).join('\r\n'));
+    }
     if (format === 'html-json' || format === 'html') zip.add(`${path}/messages.html`, html(chat));
     if (format === 'html-json' || format === 'json') zip.add(`${path}/messages.json`, JSON.stringify(chat, null, 2));
     if (format === 'csv') zip.add(`${path}/messages.csv`, csv(chat));
     if (format === 'txt') zip.add(`${path}/messages.txt`, txt(chat));
   }
-  return { filter, add, safeName, dateOf };
+  return { filter, prepareChat, selected, category, clock, add, safeName, dateOf };
 })();

@@ -150,31 +150,36 @@
       const kind = tag === 'a' ? 'file-or-link' : tag === 'source' ? element.closest?.('audio, video')?.tagName.toLowerCase() || tag : tag;
       items.push({ kind, url, mimeType: element.getAttribute('type') || undefined, downloadable: tag !== 'a' || element.hasAttribute('download'), name: element.getAttribute('download') || element.getAttribute('alt') || element.textContent?.trim().slice(0, 100) || '' });
     }
+    [...row.querySelectorAll('.attachAudio')].filter(element=>element.matches?.('.attachAudio')).forEach((_voice,index)=>items.push({kind:'voice',url:null,downloadable:false,source:'voice-tile',name:`Голосовое сообщение ${index+1}`}));
     photoTiles(row).forEach((_tile, index) => items.push({ kind: 'photo', url: null, downloadable: false, source: 'photo-tile', name: `photo-${index + 1}` }));
     return [...new Map(items.map((item, index) => [item.url || `button:${index}:${item.name}`, item])).values()];
   }
   function extract(row, dateLabel) {
     const message = row.querySelector('.message') || row;
     const textNode = message.querySelector('.bubbleContent') || message;
-    const textParts = [...(textNode.querySelectorAll?.('.text') || [])].filter(element => !element.closest?.('.header, .meta, time, .reactions')).map(element => element.innerText?.trim() || element.textContent?.trim() || '').filter(Boolean);
+    const textParts = [...(textNode.querySelectorAll?.('.text') || [])].filter(element => !element.closest?.('.header, .meta, time, .reactions, .link, [class*="forward"]')).map(element => element.innerText?.trim() || element.textContent?.trim() || '').filter(Boolean);
     let body = textParts.join('\n');
     if (!body && textNode.cloneNode) {
       const copy = textNode.cloneNode(true);
-      copy.querySelectorAll('.header, .meta, time, .reactions, [class*="emoji"], [class*="media"], button[aria-label="Скачать"]').forEach(element => element.remove());
+      copy.querySelectorAll('.header, .meta, time, .reactions, .link, [class*="forward"], .attachAudio, [class*="emoji"], [class*="media"], button[aria-label="Скачать"]').forEach(element => element.remove());
       body = copy.innerText?.trim() || copy.textContent?.trim() || '';
     }
     if (!body && !textNode.cloneNode) body = textNode.innerText?.trim() || textNode.textContent?.trim() || '';
-    const time = message.querySelector('time')?.getAttribute('datetime') || message.querySelector('time, [class*="meta"]')?.textContent?.trim() || '';
-    const authorElement = row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
+    const time = message.querySelector('time')?.getAttribute('datetime') || message.querySelector('time, .meta--text, .bubbleContent > .meta')?.textContent?.trim() || message.querySelector('[class*="meta"]')?.textContent?.trim() || '';
+    const authorElement = row.querySelector('.bubbleContent .header .name') || row.querySelector('.bubbleContent button.header') || row.querySelector('button.header, .bubbleContent .header, [class*="sender"], [class*="author"]');
     const authorName = authorElement?.querySelector?.('.name') || authorElement;
     const author = authorName?.innerText?.trim() || authorName?.textContent?.trim() || '';
     const reactions = [...row.querySelectorAll('[class*="reactions"] [class*="reaction"]')].map(el => el.textContent.trim()).filter(Boolean);
     const attachments = attachmentsOf(row);
-    return { dateLabel, time, author, direction: row.classList.contains('messageWrapper--isOut') ? 'out' : 'in', text: body, reactions, attachments };
+    const forwarded = row.querySelector('[class*="forward"]');
+    const forwardedFrom = forwarded?.querySelector('.name, .author')?.textContent?.trim() || '';
+    const reply = row.querySelector('.link .mark');
+    const replyTo = reply ? {author:reply.querySelector('.author .name')?.textContent?.trim() || '',text:reply.querySelector(':scope > .text')?.textContent?.trim() || ''} : undefined;
+    return { dateLabel, time, author, forwardedFrom, replyTo, direction: row.classList.contains('messageWrapper--isOut') ? 'out' : 'in', text: body, reactions, attachments };
   }
   function snapshot() {
     const rows = [...document.querySelectorAll(MESSAGE_ROWS)];
-    let dateLabel = '';
+    let dateLabel = '', lastAuthor = '', lastDirection = '';
     return rows.map(row => {
       // MAX renders day capsules as siblings of the outer .item, rather
       // than siblings of .messageWrapper inside its role=listitem block.
@@ -188,13 +193,18 @@
       const item = row.closest('[role="listitem"]');
       const candidate = item?.querySelector?.('.dateSeparator .date, .dateSeparator') || item?.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator') || row.previousElementSibling?.querySelector?.('.dateSeparator .date, .dateSeparator');
       if (candidate) dateLabel = candidate.textContent?.trim() || dateLabel;
-      return extract(row, dateLabel);
+      const value=extract(row,dateLabel);
+      if(row.classList.contains('messageWrapper--control') || value.direction!==lastDirection || row.classList.contains('messageWrapper--first')) lastAuthor='';
+      if(value.author) lastAuthor=value.author;
+      else if(value.direction==='in') value.author=lastAuthor;
+      lastDirection=value.direction;
+      return value;
     });
   }
   function signature(item) {
     return JSON.stringify([item.time, item.direction, item.text?.replace(/\s+/g, ' ').trim(), item.attachments.map(a => [a.kind, a.source?.startsWith('download-button') ? 'download-button' : a.name])]);
   }
-  function captureButton(button) {
+  function captureButton(button, mode = 'file') {
     return new Promise(resolve => {
       const marker = 'max-archive-download-capture';
       const nonce = crypto.randomUUID();
@@ -221,7 +231,7 @@
         if (event.data.type === 'captured') finish({ url: event.data.href, name: event.data.name });
       }
       window.addEventListener('message', onMessage);
-      window.postMessage({ marker, type: 'arm', nonce }, location.origin);
+      window.postMessage({ marker, type: 'arm', nonce, mode }, location.origin);
     });
   }
   async function capturePhoto(tile, assertActive, progress = () => {}) {
@@ -275,7 +285,7 @@
       // MAX can replace a placeholder tile with video/source only after it is
       // visible. Refresh the media inventory before capturing its addresses.
       const hydrated = attachmentsOf(rows[index]);
-      if (hydrated.length) items[index].attachments = hydrated;
+      if (hydrated.length) items[index].attachments = hydrated.filter(item=>typeof ArchiveFormat==='undefined' || ArchiveFormat.selected(item,options));
       const buttons = [...rows[index].querySelectorAll('button[aria-label="Скачать"], button[aria-label="Download"]')];
       const files = items[index]?.attachments.filter(attachment => attachment.source === 'download-button') || [];
       if (!cache.rowIds.has(rows[index])) cache.rowIds.set(rows[index], ++cache.nextRowId);
@@ -306,6 +316,15 @@
         const captured = cache.get(key);
         if (captured?.url) Object.assign(photos[photoIndex], captured, { downloadable: true, source: 'photo-viewer', name: captured.name || photos[photoIndex].name });
         else { photos[photoIndex].resolutionError = captured?.error || 'photo_url_unavailable'; if(captured?.diagnostics) photos[photoIndex].resolutionDiagnostics=captured.diagnostics; }
+      }
+      const voiceButtons=[...rows[index].querySelectorAll('.attachAudio .buttonWrapper button')];
+      const voices=items[index].attachments.filter(item=>item.source==='voice-tile');
+      for(let voiceIndex=0;voiceIndex<Math.min(voices.length,voiceButtons.length);voiceIndex++) {
+        assertActive(); const key=`${messageKey}:voice:${voiceIndex}`;
+        if(!cache.has(key)) await resolveFile(key,voices[voiceIndex].name,()=>captureButton(voiceButtons[voiceIndex],'voice'));
+        const captured=cache.get(key);
+        if(captured?.url) Object.assign(voices[voiceIndex],{url:captured.url,downloadable:true,source:'voice-url'});
+        else voices[voiceIndex].resolutionError='voice_url_unavailable';
       }
       await onRow(index,items[index]);
     }
@@ -362,13 +381,14 @@
     const targets = new Map();
     if (!options.media || !options.downloadMedia) return { neededMessages: 0, unresolvedMessages: 0, scrollAttempts: 0 };
     for (const message of messages) {
-      if (!message.attachments.some(item => item.source === 'download-button' || item.source === 'photo-tile')) continue;
+      if(typeof ArchiveFormat!=='undefined') message.attachments=message.attachments.filter(item=>ArchiveFormat.selected(item,options));
+      if (!message.attachments.some(item => ['download-button','photo-tile','voice-tile'].includes(item.source))) continue;
       const key = mediaKey(message);
       if (!targets.has(key)) targets.set(key, []);
       targets.get(key).push(message);
     }
     const neededMessages = targets.size, cache = new Map();
-    const fileTotal = [...targets.values()].flat().reduce((sum, copy) => sum + copy.attachments.filter(item => item.source === 'download-button' || item.source === 'photo-tile').length, 0);
+    const fileTotal = [...targets.values()].flat().reduce((sum, copy) => sum + copy.attachments.filter(item => ['download-button','photo-tile','voice-tile'].includes(item.source)).length, 0);
     const captureIds = new Map(messages.map((item,index) => [item, `message:${index}`]));
     let scrollAttempts = 0, stable = 0;
     if (!targets.size || cancelled) return { neededMessages, unresolvedMessages: targets.size, scrollAttempts };
@@ -548,6 +568,54 @@
     throw new Error(`Чат «${info.title}» не найден в текущем списке.`);
   }
 
+  async function collectParticipants(options, progress, assertActive) {
+    if(!options.participants || options.anonymize) return {participants:[],participantsStatus:'excluded'};
+    const backSelector='button[aria-label="Go back"], button[aria-label="Назад"]';
+    const oldBack=new Set(document.querySelectorAll(backSelector));
+    const opener=document.querySelector('.openedChat button[aria-label^="Open "][aria-label$="profile"], .openedChat button[aria-label*="профиль"]');
+    if(!opener) return {participants:[],participantsStatus:'unavailable'};
+    const expectedText=opener.textContent || '';
+    const expected=Number(expectedText.match(/(?:of|из)\s+(\d+)/i)?.[1]) || null;
+    let opened=false;
+    try {
+      assertActive();progress({title:openedTitle(),count:0,stage:'participants'});
+      opener.click();opened=true;
+      let tab;
+      for(let attempt=0;attempt<20;attempt++) {
+        await wait(150);assertActive();
+        tab=[...document.querySelectorAll('button')].find(button=>/^(Members|Участники)$/.test(button.textContent.trim()));
+        if(tab) break;
+      }
+      if(!tab) return {participants:[],participantsStatus:'unavailable'};
+      tab.click();await wait(200);
+      let panel=tab.parentElement;
+      while(panel && !panel.querySelector('button.cell .title .name')) panel=panel.parentElement;
+      if(!panel) return {participants:[],participantsStatus:'unavailable'};
+      const found=new Map();let stable=0;
+      for(let round=0;round<200 && !cancelled;round++) {
+        await waitForVisible(progress,openedTitle(),0);assertActive();
+        const before=found.size;
+        const cells=[...panel.querySelectorAll('button.cell')];
+        for(const cell of cells) {
+          const name=cell.querySelector('.title .name')?.textContent?.trim();
+          if(!name) continue;
+          const role=cell.querySelector('.indicator .detail')?.textContent?.trim() || '';
+          const own=/\(you\)|вы|владелец.*вы/i.test(role);
+          found.set(name,{name,role,self:own});
+        }
+        if(expected && found.size>=expected) break;
+        const scroller=cells[0] && scrollParent(cells[0]);
+        if(!scroller) break;
+        const top=scroller.scrollTop;
+        scroller.scrollTop+=Math.max(300,scroller.clientHeight*0.8);await wait(200);
+        if(found.size===before && Math.abs(scroller.scrollTop-top)<2) stable++;else stable=0;
+        if(stable>=3) break;
+      }
+      return {participants:[...found.values()],participantsStatus:expected && found.size===expected?'complete':'partial'};
+    } finally {
+      if(opened) {const back=[...document.querySelectorAll(backSelector)].find(button=>!oldBack.has(button));if(back){back.click();await wait(150);}}
+    }
+  }
   let activeOperation = null;
   chrome.runtime.onConnect.addListener(port => {
     if (port.name !== 'max-export') return;
@@ -580,7 +648,10 @@
           const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
           await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
-          const result = await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,value));
+          const contacts=await collectParticipants(message.options,progress,assertActive);
+          const result = {...await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,{...value,...contacts})),...contacts};
+          const self=contacts.participants.find(person=>person.self)?.name;
+          if(self) for(const item of result.messages) if(item.direction==='out') item.author=self;
           const messages = result.messages;
           for (let index = 0; index < messages.length; index += 250) {
             port.postMessage({ type: 'chunk', id: message.id, messages: messages.slice(index, index + 250) });

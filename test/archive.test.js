@@ -74,7 +74,7 @@ test('archive formats include the normalized date and sender', async () => {
   ArchiveFormat.add(zip, 'chat', { title: 'Чат', messages }, 'html');
   const archiveBytes = new Uint8Array(await zip.blob().arrayBuffer());
   const content = new TextDecoder().decode(archiveBytes);
-  assert.ok(content.includes('Екатерина Волкова · 2026-10-18 17:58'));
+  assert.ok(content.includes('Екатерина Волкова · 18.10.2026 17:58'));
 });
 
 test('HTML groups days and embeds only downloaded media, with document links', () => {
@@ -106,4 +106,16 @@ test('HTML never accepts executable or traversing attachment paths', () => {
   const attachments = ['javascript:alert(1)', '../private.jpg', 'media/../private.jpg'].map(localPath => ({ kind: 'photo', localPath, name: '<script>bad</script>' }));
   ArchiveFormat.add({ add(_name, value) { html = value; } }, 'chat', { title: 'Чат', messages: [{ time: '', text: '', attachments, reactions: [] }] }, 'html');
   assert.doesNotMatch(html, /src="|href="|<script>/);
+});
+
+
+test('Russian 24-hour timestamps and explicit anonymization preserve the original text', () => {
+ const input=[{author:'Имя',forwardedFrom:'Источник',dateLabel:'October 6, 2026',time:'03:53 PM ред.',text:'Текст',attachments:[],reactions:[]}];
+ const named=ArchiveFormat.filter(input,{media:true});
+ assert.equal(named[0].time,'15:53');
+ let html;ArchiveFormat.add({add(name,value){if(name.endsWith('.html')) html=value;}},'chat',{title:'Чат',messages:named},'html');
+ assert.ok(html.includes('Имя · 06.10.2026 15:53'));
+ assert.ok(html.includes('Переслано от: Источник'));
+ const anonymous=ArchiveFormat.filter(input,{media:true,anonymize:true});
+ assert.equal(anonymous[0].author,'');assert.equal(anonymous[0].forwardedFrom,'');assert.equal(anonymous[0].text,'Текст');
 });

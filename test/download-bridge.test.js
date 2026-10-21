@@ -21,10 +21,13 @@ function bridge() {
     hasAttribute(name) { return name === 'download' && Boolean(this.download); }
     click() { ordinaryClicks++; }
   }
+  let played=0;
+  class HTMLMediaElement {constructor(url){this.src=url;}getAttribute(){return this.src;}play(){played++;return Promise.resolve();}}
+  const originalPlay=HTMLMediaElement.prototype.play;
   const originalClick = HTMLAnchorElement.prototype.click;
   const source = fs.readFileSync(path.join(__dirname, '..', 'download-bridge.js'), 'utf8');
-  vm.runInNewContext(source, { window, location, HTMLAnchorElement, setTimeout, clearTimeout });
-  return { window, messages, HTMLAnchorElement, originalClick, ordinaryClicks: () => ordinaryClicks };
+  vm.runInNewContext(source, { window, location, HTMLAnchorElement, HTMLMediaElement, setTimeout, clearTimeout });
+  return { window, messages, HTMLAnchorElement, HTMLMediaElement, originalPlay, played:()=>played, originalClick, ordinaryClicks: () => ordinaryClicks };
 }
 
 test('MAX download bridge captures the file URL and restores normal clicks', () => {
@@ -46,4 +49,15 @@ test('cancel disarms the MAX download bridge', () => {
   state.window.postMessage({ marker: 'max-archive-download-capture', type: 'arm', nonce: 'two' });
   state.window.postMessage({ marker: 'max-archive-download-capture', type: 'cancel', nonce: 'two' });
   assert.equal(state.HTMLAnchorElement.prototype.click, state.originalClick);
+});
+
+
+test('voice source is captured without playing private audio and the play hook is restored', async()=>{
+ const state=bridge();
+ state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'voice',mode:'voice'});
+ await new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg').play();
+ assert.equal(state.messages.at(-1).href,'https://fd.oneme.ru/voice.ogg');
+ assert.equal(state.played(),0);
+ assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
+ await new state.HTMLMediaElement('https://fd.oneme.ru/ordinary.ogg').play();assert.equal(state.played(),1);
 });

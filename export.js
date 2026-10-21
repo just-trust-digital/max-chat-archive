@@ -156,7 +156,8 @@
       try {
         const url = new URL(attachment.url);
         const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
-        if (url.protocol !== 'https:' || !mediaHost) throw new Error('Адрес вне разрешённых доменов медиа');
+        const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.url) && attachment.url.length<=36*1024*1024;
+        if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost)) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= 250 * 1024 * 1024) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
         const video = attachment.kind === 'video' || attachment.mimeType?.startsWith('video/') || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
@@ -190,6 +191,7 @@
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
       if (attachment.source === 'download-button') report.skippedMedia.push({ name: attachment.name, reason: 'Веб-версия не показывает прямой адрес файла' });
+      if (attachment.source === 'voice-tile') report.skippedMedia.push({name:attachment.name,reason:'Не удалось получить голосовое сообщение',detail:attachment.resolutionError || 'message_not_revisited'});
       if (attachment.source === 'photo-tile') report.skippedMedia.push({ name: attachment.name, reason: 'Не удалось получить фотографию из просмотрщика MAX', detail: attachment.resolutionError || 'message_not_revisited', diagnostics: attachment.resolutionDiagnostics });
     }
     return total;
@@ -230,7 +232,7 @@
         if (stopped) break;
         const info = selected[index];
         const checkpointId=`${runId}:${index}`;
-        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat,settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
+        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat:ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(chat,settings):chat,settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
         note(`Чат ${index + 1} из ${selected.length}: ${info?.title || 'открытый чат'}`);
         rows[index].textContent = `${info?.title || 'Открытый чат'} — чтение истории`;
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
@@ -243,6 +245,7 @@
             rows[index].textContent = `${value.title} — ${phase[0].toLowerCase() + phase.slice(1)}, ${value.count} сообщений`;
           }, chat => saveCopy(chat,'history'));
           stage(`Чат ${index + 1} из ${selected.length}: подготовка сообщений…`);
+          if(ArchiveFormat.prepareChat) Object.assign(result,ArchiveFormat.prepareChat(result,settings));
           const unknownDates = result.messages.filter(message => !ArchiveFormat.dateOf(message)).length;
           result.messages = ArchiveFormat.filter(result.messages, settings);
           await saveCopy(result,'media');
