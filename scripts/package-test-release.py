@@ -19,6 +19,7 @@ OUT = ROOT / 'output'
 PDF = OUT / 'pdf' / 'max-archive-quick-start.pdf'
 FILES = [
     'updates.js', 'updates.css',
+    'skills/max-archive/SKILL.md', 'skills/max-archive/references/archive.md',
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',
     'styles.css', 'content.js', 'format.js', 'checkpoint.js', 'zip.js',
     'download-bridge.js', 'timer-worker.js', 'directory.js', 'calendar.js', 'LICENSE',
