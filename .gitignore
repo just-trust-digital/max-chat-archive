@@ -4,3 +4,5 @@
 .tmp-check.zip
 node_modules/
 .research/
+output/
+tmp/pdfs/
