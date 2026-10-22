@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MAX Архив: стрелка экспорта">
+  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00BFFF"/><stop offset=".58" stop-color="#471AFF"/><stop offset="1" stop-color="#9500FF"/></linearGradient></defs>
+  <rect width="128" height="128" rx="32" fill="url(#a)"/>
+  <path d="M33 64v26h57V76M58 69l34-34M67 35h25v25" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

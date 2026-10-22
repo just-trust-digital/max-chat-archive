@@ -69,3 +69,5 @@
 Сборка расширения не требуется. Автоматические тесты запускаются командой `npm test` на Node.js. [Проверки, локальные макеты и сборка пакета](docs/development.md) · [Исследование существующих решений](docs/research-existing.md).
 
 [MIT](LICENSE) · [Just Trust Digital](https://justtrust.digital)
+
+Предложения следующего интерфейса: [два варианта настроек и знака](docs/design/README.md). Для просмотра локально: `npm run test:browser` из каталога репозитория, затем http://127.0.0.1:8767/docs/design/index.html . Макеты используют синтетические данные и не подключены к MAX.
