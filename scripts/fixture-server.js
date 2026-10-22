@@ -6,6 +6,7 @@ const root = path.resolve(__dirname, '..');
 const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css', '/test/ui-layout.html', '/test/recovery-layout.html', '/checkpoint.js', '/test/checkpoint-fixture.html', '/fixtures/checkpoint-browser.js', '/fixtures/ui-layout.js']);
 for (const name of ['index.html','screen.html','screen.css','screen.js','logo-a.svg','logo-b.svg']) routes.add(`/docs/design/${name}`);
 for (const route of ['/index.html','/test/messages.html','/report.json']) routes.add(route);
+for (const route of ['/directory.js','/test/directory-fixture.html','/fixtures/directory-browser.js']) routes.add(route);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.css':'text/css; charset=utf-8' };
 const previewMedia = { '/test/media/photo.svg': 'fixtures/photo.svg', '/test/media/sample.webm': 'fixtures/sample.webm', '/test/media/sample.wav': 'fixtures/sample.wav', '/test/media/document.txt': 'fixtures/document.txt' };
 http.createServer(async (request, response) => {

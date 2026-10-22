@@ -1,7 +1,7 @@
 const ArchiveFormat = (() => {
   const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const safeUrl = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } };
-  const safeName = value => String(value || 'chat').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 100) || 'chat';
+  const safeName = value => String(value || 'chat').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 100).replace(/[. ]+$/,'') || 'chat';
   const csvCell = value => {
     let cell = String(value ?? '');
     if (/^[=+@\-\t\r]/.test(cell)) cell = `'${cell}`;

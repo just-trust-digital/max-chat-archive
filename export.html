@@ -21,6 +21,8 @@
       <section class="card">
         <div class="card-head"><div><h2>Данные и формат</h2><p>Что сохранить в архиве</p></div></div>
         <div class="fields">
+          <label class="field">Способ сохранения<select id="destination"><option value="zip">ZIP-архив</option><option value="folder">Папка в Загрузках</option></select></label>
+          <p id="destination-hint" class="hint">ZIP нужно распаковать перед просмотром.</p>
           <label class="field">Формат
             <select id="format"><option value="html-json">HTML + JSON</option><option value="json">JSON</option><option value="html">HTML</option><option value="csv">CSV</option><option value="txt">TXT</option></select>
           </label>
@@ -38,7 +40,7 @@
             <label class="check"><input id="type-gif" type="checkbox" checked><span>GIF</span></label>
             <label class="check"><input id="type-file" type="checkbox" checked><span>Документы и другие файлы</span></label>
           </fieldset>
-          <label class="check"><input id="download-media" type="checkbox" checked><span><strong>Сохранить файлы внутри архива</strong><small>Для просмотра без интернета. Если выключить, останутся только доступные внешние ссылки. До 25 МБ на файл и 250 МБ на архив.</small></span></label>
+          <label class="check"><input id="download-media" type="checkbox" checked><span><strong>Сохранить файлы вместе с перепиской</strong><small id="download-hint">Для просмотра без интернета. Если выключить, останутся внешние ссылки. До 25 МБ на файл и 250 МБ на ZIP.</small></span></label>
           <label class="check"><input id="links" type="checkbox" checked><span><strong>Адреса ссылок из сообщений</strong><small>Сохранить распознанные адреса. Текст сообщений остаётся и при выключенной настройке.</small></span></label>
           <label class="check"><input id="reactions" type="checkbox" checked><span><strong>Реакции на сообщения</strong><small>Отметки под сообщением, например 👍 3. Обычные эмодзи в тексте сохраняются независимо от этой настройки.</small></span></label>
           <fieldset class="privacy-options"><legend>Участники и приватность</legend>
@@ -55,6 +57,7 @@
     <details id="recovery-panel" class="card recovery-panel" hidden><summary>История экспорта</summary><p class="hint">Сообщения и скачанные файлы сохраняются в этом браузере. После сбоя можно скачать последнюю копию; она может содержать только часть истории и вложений. Используются настройки исходного экспорта.</p><div id="recovery-list"></div></details>
   </main>
   <script src="zip.js"></script>
+  <script src="directory.js"></script>
   <script src="format.js"></script>
   <script src="checkpoint.js"></script>
   <script src="export.js"></script>
