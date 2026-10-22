@@ -20,7 +20,7 @@ PDF = OUT / 'pdf' / 'max-archive-quick-start.pdf'
 FILES = [
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',
     'styles.css', 'content.js', 'format.js', 'checkpoint.js', 'zip.js',
-    'download-bridge.js', 'timer-worker.js',
+    'download-bridge.js', 'timer-worker.js', 'LICENSE',
 ]
 
 
