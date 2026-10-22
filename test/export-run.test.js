@@ -31,7 +31,7 @@ test('export activates MAX before reading and returns to its report after saving
       storage: { local: { set: async () => {} } }, runtime: { getManifest: () => ({ version: 'test' }) },
       downloads: { download: async () => { events.push('saved'); return 7; } }
     },
-    ArchiveFormat: { filter: messages => messages, safeName: value => value, add() {} },
+    ArchiveFormat: { filter: messages => messages, safeName: value => value, add() {}, addIndex() {} },
     ZipArchive: class { add() {} blob() { return new Blob(['archive']); } }
   };
   vm.runInNewContext(source, context);

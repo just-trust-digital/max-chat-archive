@@ -120,5 +120,15 @@ const ArchiveFormat = (() => {
     if (format === 'csv') zip.add(`${path}/messages.csv`, csv(chat));
     if (format === 'txt') zip.add(`${path}/messages.txt`, txt(chat));
   }
-  return { filter, prepareChat, selected, category, clock, add, safeName, dateOf };
+  function addIndex(archive, chats, format) {
+    const file = {html:'messages.html','html-json':'messages.html',json:'messages.json',csv:'messages.csv',txt:'messages.txt'}[format] || 'messages.html';
+    const rows = chats.map(chat => {
+      const parts=String(chat.path || '').split('/');
+      if(parts.some(part=>!part || part==='.' || part==='..' || /[\\:\x00-\x1f]/.test(part))) throw new Error('Некорректный путь переписки.');
+      const href=parts.map(encodeURIComponent).join('/')+'/'+file;
+      return `<li><a href="${escape(href)}">${escape(chat.title || 'Чат')}</a><p>${Number(chat.messages) || 0} сообщений${chat.complete===false?' · история может быть неполной':''}</p></li>`;
+    }).join('');
+    archive.add('index.html',`<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Переписка MAX</title><style>:root{color-scheme:light dark}*{box-sizing:border-box}body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#f4f6fa;color:#17233a}main{max-width:800px;margin:auto;padding:40px 24px}h1{font-size:28px}ul{list-style:none;padding:0}li{padding:20px 0;border-bottom:1px solid #cbd5e1;overflow-wrap:anywhere}a{color:#155ac2}li>a{font-size:19px;font-weight:650}p,footer{color:#526178}li p{margin:6px 0}footer{margin-top:32px;font-size:13px}a:focus-visible{outline:3px solid currentColor;outline-offset:4px}@media(prefers-color-scheme:dark){body{background:#101820;color:#e2eaf2}a{color:#8ec3ff}p,footer{color:#b5c5d5}li{border-color:#354656}}</style></head><body><main><h1>Переписка MAX</h1><p>Выберите чат для просмотра.</p><ul>${rows || '<li>Сохранённых переписок пока нет.</li>'}</ul><footer><a href="report.json">Технический отчёт об экспорте</a></footer></main></body></html>`);
+  }
+  return { filter, prepareChat, selected, category, clock, add, addIndex, safeName, dateOf };
 })();

@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css', '/test/ui-layout.html', '/test/recovery-layout.html', '/checkpoint.js', '/test/checkpoint-fixture.html', '/fixtures/checkpoint-browser.js', '/fixtures/ui-layout.js']);
 for (const name of ['index.html','screen.html','screen.css','screen.js','logo-a.svg','logo-b.svg']) routes.add(`/docs/design/${name}`);
+for (const route of ['/index.html','/test/messages.html','/report.json']) routes.add(route);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.css':'text/css; charset=utf-8' };
 const previewMedia = { '/test/media/photo.svg': 'fixtures/photo.svg', '/test/media/sample.webm': 'fixtures/sample.webm', '/test/media/sample.wav': 'fixtures/sample.wav', '/test/media/document.txt': 'fixtures/document.txt' };
 http.createServer(async (request, response) => {
@@ -17,12 +18,14 @@ http.createServer(async (request, response) => {
       const themed=html.replace('href="styles.css"',`href="styles.css?theme=${requestUrl.searchParams.get('theme') || ''}"`);
       response.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});response.end(themed);return;
     }
-    if (route === '/test/archive-preview.html') {
+    if (route === '/report.json') {response.writeHead(200,{'content-type':'application/json'});response.end('{"fixture":true,"errors":[]}');return;}
+    if (route === '/test/archive-preview.html' || route === '/test/messages.html' || route === '/index.html') {
       const source = await fs.readFile(path.join(root, 'format.js'), 'utf8');
       const format = vm.runInNewContext(`${source}\nArchiveFormat`, { URL });
       const chat = JSON.parse(await fs.readFile(path.join(root, 'fixtures/archive-preview.json'), 'utf8'));
       let html;
-      format.add({ add(_name, value) { html = value; } }, 'sample', chat, 'html');
+      if(route==='/index.html') format.addIndex({add(_name,value){html=value;}},[{title:chat.title,path:'test',messages:chat.messages.length,complete:true}],'html');
+      else format.add({ add(_name, value) { html = value; } }, 'sample', chat, 'html');
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); response.end(html); return;
     }
     if(route==='/styles.css' && ['light','dark'].includes(requestUrl.searchParams.get('theme'))) {

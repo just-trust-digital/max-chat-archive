@@ -291,6 +291,7 @@
           ArchiveFormat.add(zip, path, result, settings.format);
           const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, participants:result.participants?.length || 0,participantsStatus:result.participantsStatus || 'unavailable', history: result.history };
           if (perChat) {
+            ArchiveFormat.addIndex(zip,[summary],settings.format);
             zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), mediaBytes: chatMediaBytes }, null, 2));
             await saveZip(zip, `max-archive-${path}.zip`);
           }
@@ -309,6 +310,7 @@
         if (perChat) {
           if (selected.length > 1 || report.errors.length) await saveBlob(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }), 'max-archive-summary.json');
         } else {
+          ArchiveFormat.addIndex(combinedZip,report.chats,settings.format);
           combinedZip.add('report.json', JSON.stringify(report, null, 2));
           await saveZip(combinedZip, `max-archive-${new Date().toISOString().slice(0, 10)}.zip`);
         }
@@ -365,6 +367,7 @@
         zip.add(`${saved.path}/${file.localPath}`,bytes);
       }
       ArchiveFormat.add(zip,saved.path,chat,saved.settings.format);
+      ArchiveFormat.addIndex(zip,[{title:chat.title,path:saved.path,messages:chat.messages.length,complete:chat.complete}],saved.settings.format);
       const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath && item.kind!=='file-or-link');
       zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],missingFiles:missing.length},null,2));
       show('Скачивание восстановленного ZIP…');

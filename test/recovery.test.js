@@ -7,7 +7,7 @@ function exporter({failure=false,interrupted=false,invalidId=false,inlineVoice=f
  setTimeout:(fn,ms)=>ms===60000?0:setTimeout(fn,ms),clearTimeout,
  CheckpointStore:{get:async()=>{if(failure)throw Error('storage unavailable');return {chat:{title:'Чат',messages:[{text:'Текст',attachments:[inlineVoice?{url:'inline-voice:one',inlineData:'data:audio/ogg;base64,T2dnUw==',kind:'voice'}:{url:'https://i.oneme.ru/photo',kind:'photo'}]}]},settings:{format:'html-json',media:true},path:'001-chat'};},files:async()=>inlineVoice?[]:[{url:'https://i.oneme.ru/photo',localPath:'media/photo.png',bytes:new Uint8Array([137,80,78,71]),mimeType:'image/png'}]},
  chrome:{downloads:{download:async()=>invalidId?undefined:7,onChanged:{addListener(fn){listener=fn;},removeListener(fn){if(listener===fn)listener=null;}},search:async()=>[{state:interrupted?'interrupted':'complete',error:interrupted?'USER_CANCELED':undefined}]}},
- ArchiveFormat:{filter:messages=>messages,add(zip,path,chat){assert.equal(chat.messages[0].attachments[0].localPath,inlineVoice?'media/recovered-voice-1.ogg':'media/photo.png');zip.add(path+'/messages.html','preview');}},
+ ArchiveFormat:{addIndex(){},filter:messages=>messages,add(zip,path,chat){assert.equal(chat.messages[0].attachments[0].localPath,inlineVoice?'media/recovered-voice-1.ogg':'media/photo.png');zip.add(path+'/messages.html','preview');}},
  ZipArchive:class{add(path,bytes){files.set(path,bytes);}blob(){return new Blob(['zip']);}}
  };vm.runInNewContext(source,context);return {...context.api,nodes,files};
 }
