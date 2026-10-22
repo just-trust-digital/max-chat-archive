@@ -4,7 +4,7 @@
 
 Проект [Just Trust Digital](https://justtrust.digital). Тестовая версия **0.3.12**. Неофициальное расширение, не связано с разработчиками MAX.
 
-[Скачать расширение](https://github.com/just-trust-digital/max-chat-archive/releases/tag/v0.3.12) · [Сообщить об ошибке](https://github.com/just-trust-digital/max-chat-archive/issues) · [Документация для разработки](docs/development.md)
+[Скачать расширение](https://github.com/just-trust-digital/max-chat-archive/releases/tag/v0.3.12) · [Сообщить об ошибке](https://github.com/just-trust-digital/max-chat-archive/issues) · [Известные проблемы](KNOWN_ISSUES.md) · [Документация для разработки](docs/development.md)
 
 ## Возможности
 

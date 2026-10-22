@@ -12,7 +12,8 @@
     "https://*.max.ru/*",
     "https://i.oneme.ru/*",
     "https://fd.oneme.ru/*",
-    "https://*.okcdn.ru/*"
+    "https://*.okcdn.ru/*",
+    "https://raw.githubusercontent.com/just-trust-digital/max-chat-archive/*"
   ],
   "action": {
     "default_title": "Экспорт MAX",
