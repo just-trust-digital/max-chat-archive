@@ -1,0 +1,218 @@
+[
+  {
+    "width": 1265,
+    "theme": "light",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 1497,
+    "overflow": [],
+    "scroll": 1265,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 688.8798675537109,
+      "height": 900,
+      "left": 448.4659118652344,
+      "right": 816.4610595703125,
+      "top": 211.3717498779297,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 1265
+    },
+    "size": 1280,
+    "theme": "light"
+  },
+  {
+    "width": 1265,
+    "theme": "dark",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 1497,
+    "overflow": [],
+    "scroll": 1265,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 688.8798675537109,
+      "height": 900,
+      "left": 448.4659118652344,
+      "right": 816.4610595703125,
+      "top": 211.3717498779297,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 1265
+    },
+    "size": 1280,
+    "theme": "dark"
+  },
+  {
+    "width": 753,
+    "theme": "light",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 2013,
+    "overflow": [],
+    "scroll": 753,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 688.8798675537109,
+      "height": 900,
+      "left": 192.6217498779297,
+      "right": 560.6168975830078,
+      "top": 211.3717498779297,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 753
+    },
+    "size": 768,
+    "theme": "light"
+  },
+  {
+    "width": 753,
+    "theme": "dark",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 2013,
+    "overflow": [],
+    "scroll": 753,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 688.8798675537109,
+      "height": 900,
+      "left": 192.6217498779297,
+      "right": 560.6168975830078,
+      "top": 211.3717498779297,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 753
+    },
+    "size": 768,
+    "theme": "dark"
+  },
+  {
+    "width": 375,
+    "theme": "light",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 2875,
+    "overflow": [],
+    "scroll": 375,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 692.8733978271484,
+      "height": 900,
+      "left": 4.464285850524902,
+      "right": 370.5925512313843,
+      "top": 207.3782501220703,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 375
+    },
+    "size": 390,
+    "theme": "light"
+  },
+  {
+    "width": 375,
+    "theme": "dark",
+    "archiveLimit": "250",
+    "fileLimit": "25",
+    "height": 2875,
+    "overflow": [],
+    "scroll": 375,
+    "textCheckbox": [
+      {
+        "checked": true,
+        "disabled": true
+      }
+    ]
+  },
+  {
+    "calendar": {
+      "bottom": 692.8733978271484,
+      "height": 900,
+      "left": 4.464285850524902,
+      "right": 370.5925512313843,
+      "top": 207.3782501220703,
+      "week": [
+        "Пн",
+        "Вт",
+        "Ср",
+        "Чт",
+        "Пт",
+        "Сб",
+        "Вс"
+      ],
+      "width": 375
+    },
+    "size": 390,
+    "theme": "dark"
+  }
+]

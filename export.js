@@ -18,7 +18,7 @@
     if($('settings-panel')) $('settings-panel').hidden=history;
     if($('recovery-panel')) $('recovery-panel').hidden=!history;
     if($('runbar')) $('runbar').hidden=history;
-    if($('page-heading')) $('page-heading').textContent=history?'История экспорта':'Сохранить переписку';
+    if($('page-heading')) $('page-heading').textContent=history?'История экспорта':'Настройки экспорта';
     if($('page-description')) $('page-description').textContent=history?'Скачайте сохранённую копию переписки.':'Выберите чаты и содержимое архива.';
     for(const name of ['settings','history']) {
       const tab=$(name+'-tab');
@@ -94,18 +94,13 @@
     const wasHidden=alert.hidden;alert.hidden=!show;
     if(show && wasHidden) alert.scrollIntoView?.({block:'center',behavior:'instant'});
   }
-  function updatePeriod() {
-    const from=$('from')?.value,to=$('to')?.value, display=value=>value.split('-').reverse().join('.');
-    if($('period-summary')) $('period-summary').textContent=`${from?'С '+display(from):'С первого сообщения'} ${to?'по '+display(to):'до последнего сообщения'}`;
-    if(!from && !to && $('period-summary')) $('period-summary').textContent='С первого до последнего сообщения';
-  }
   function updatePrivacy() {if($('participants')) $('participants').disabled=!!$('anonymize')?.checked;}
   function updateDestination() {
     const folder=$('destination')?.value==='folder';
     start.textContent=folder?'Сохранить в папку':'Скачать ZIP';
     $('split').disabled=folder;
     if($('destination-hint')) $('destination-hint').textContent=folder?'В Загрузках создаётся отдельная папка с index.html, переписками и файлами. Распаковка не нужна.':'ZIP нужно распаковать перед просмотром.';
-    if($('download-hint')) $('download-hint').textContent=$('download-media').checked===false?'Внешние ссылки требуют интернета и могут перестать работать.':folder?'Для просмотра без интернета. До 25 МБ на файл; общего лимита папки нет.':'Для просмотра без интернета. До 25 МБ на файл и 250 МБ на ZIP.';
+    if($('download-hint')) $('download-hint').textContent=$('download-media').checked===false?'Внешние ссылки требуют интернета и могут перестать работать.':'Для оффлайн доступа.';
   }
   function recoveryControls(disabled) {$('recovery-list')?.querySelectorAll('button').forEach(button=>{button.disabled=disabled;});for(const id of ['settings-tab','history-tab']) if($(id)) $(id).disabled=disabled;}
   function scope() { return document.querySelector('input[name="scope"]:checked').value; }
@@ -466,7 +461,7 @@
       for (const [key, id] of [['anonymize','anonymize'],['participants','participants'],['media', 'media'], ['downloadMedia', 'download-media'], ['links', 'links'], ['reactions', 'reactions']]) if($(id)) $(id).checked = saved[key] ?? (key==='participants'?true:defaults[key]);
       for(const key of ['photo','video','voice','videoMessage','audio','sticker','gif','file']) if($('type-'+key)) $('type-'+key).checked=saved.mediaTypes?.[key] ?? (saved.media!==false);
       if($('download-mode')) $('download-mode').value=$('download-media').checked?'files':'links';
-      updatePeriod();updatePrivacy();updateDestination();
+      globalThis.ArchiveCalendar?.refresh();updatePrivacy();updateDestination();
       connect();
       const current = await call('current');
       note(current.title ? `Открыт чат: ${current.title}` : 'Выберите чат в MAX.');
@@ -490,8 +485,6 @@
   $('settings-tab')?.addEventListener('click',()=>showView('settings'));
   $('history-tab')?.addEventListener('click',()=>showView('history'));
   function stopExport() { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
-  $('from')?.addEventListener('change',updatePeriod);
-  $('to')?.addEventListener('change',updatePeriod);
   $('anonymize')?.addEventListener('change',updatePrivacy);
   cancel.addEventListener('click', stopExport);
   init();

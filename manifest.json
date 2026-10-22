@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MAX Архив",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Локальный экспорт чатов MAX с сообщениями и вложениями",
   "permissions": [
     "tabs",

@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
-const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css', '/test/ui-layout.html', '/test/recovery-layout.html', '/checkpoint.js', '/test/checkpoint-fixture.html', '/fixtures/checkpoint-browser.js', '/fixtures/ui-layout.js']);
+const routes = new Set(['/test/stream-fixture.html', '/fixtures/browser.js', '/fixtures/photo.svg', '/fixtures/export-visibility.js', '/calendar.js', '/content.js', '/download-bridge.js', '/zip.js', '/format.js', '/export.js', '/styles.css', '/test/ui-layout.html', '/test/recovery-layout.html', '/checkpoint.js', '/test/checkpoint-fixture.html', '/fixtures/checkpoint-browser.js', '/fixtures/ui-layout.js']);
 for (const name of ['index.html','screen.html','screen.css','screen.js','logo-a.svg','logo-b.svg']) routes.add(`/docs/design/${name}`);
 for (const route of ['/index.html','/test/messages.html','/report.json']) routes.add(route);
 for (const route of ['/popup.js','/fixtures/popup-preview.js','/directory.js','/test/directory-fixture.html','/fixtures/directory-browser.js']) routes.add(route);
