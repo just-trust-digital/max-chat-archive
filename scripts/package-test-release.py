@@ -18,6 +18,7 @@ VERSION = json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))['vers
 OUT = ROOT / 'output'
 PDF = OUT / 'pdf' / 'max-archive-quick-start.pdf'
 FILES = [
+    'updates.js', 'updates.css',
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',
     'styles.css', 'content.js', 'format.js', 'checkpoint.js', 'zip.js',
     'download-bridge.js', 'timer-worker.js', 'directory.js', 'calendar.js', 'LICENSE',

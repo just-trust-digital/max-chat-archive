@@ -1,0 +1,6 @@
+.update-panel{display:flex;align-items:center;gap:12px;padding:12px;margin:12px 0 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);min-width:0}
+.update-panel button{flex:none;min-height:44px;white-space:normal;max-width:100%}
+.update-status{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere;min-width:0}
+.popup .update-panel{flex-direction:column;align-items:stretch;margin-top:0;gap:6px}
+.popup .update-panel button{width:100%;font-size:13px}
+@media(max-width:700px){.update-panel{flex-direction:column;align-items:stretch}}
