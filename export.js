@@ -12,6 +12,20 @@
   let port, sequence = 0, pending = new Map(), chats = [], discoveryComplete = false, running = false, stopped = false, currentAbort = null;
   const durable = typeof CheckpointStore === 'undefined' ? null : CheckpointStore;
   let recoveryBusy=false;
+  function showView(view) {
+    if(running || recoveryBusy) return;
+    const history=view==='history';
+    if($('settings-panel')) $('settings-panel').hidden=history;
+    if($('recovery-panel')) $('recovery-panel').hidden=!history;
+    if($('runbar')) $('runbar').hidden=history;
+    if($('page-heading')) $('page-heading').textContent=history?'История экспорта':'Сохранить переписку';
+    if($('page-description')) $('page-description').textContent=history?'Скачайте сохранённую копию переписки.':'Выберите чаты и содержимое архива.';
+    for(const name of ['settings','history']) {
+      const tab=$(name+'-tab');
+      if(name===view) tab?.setAttribute?.('aria-current','page');
+      else tab?.removeAttribute?.('aria-current');
+    }
+  }
   const defaults = { format: 'html-json', split: 'by-chat', destination:'zip', media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
 
   function note(message, error = false) { status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
@@ -78,11 +92,17 @@
     start.textContent=folder?'Сохранить в папку':'Скачать ZIP';
     $('split').disabled=folder;
     if($('destination-hint')) $('destination-hint').textContent=folder?'В Загрузках создаётся отдельная папка с index.html, переписками и файлами. Распаковка не нужна.':'ZIP нужно распаковать перед просмотром.';
-    if($('download-hint')) $('download-hint').textContent=folder?'Для просмотра без интернета. Если выключить, останутся внешние ссылки. До 25 МБ на файл; общего лимита папки нет.':'Для просмотра без интернета. Если выключить, останутся внешние ссылки. До 25 МБ на файл и 250 МБ на ZIP.';
+    if($('download-hint')) $('download-hint').textContent=$('download-media').checked===false?'Внешние ссылки требуют интернета и могут перестать работать.':folder?'Для просмотра без интернета. До 25 МБ на файл; общего лимита папки нет.':'Для просмотра без интернета. До 25 МБ на файл и 250 МБ на ZIP.';
   }
-  function recoveryControls(disabled) {$('recovery-list')?.querySelectorAll('button').forEach(button=>{button.disabled=disabled;});}
+  function recoveryControls(disabled) {$('recovery-list')?.querySelectorAll('button').forEach(button=>{button.disabled=disabled;});for(const id of ['settings-tab','history-tab']) if($(id)) $(id).disabled=disabled;}
   function scope() { return document.querySelector('input[name="scope"]:checked').value; }
+  function syncDownloadMode() {
+    const mode=$('download-mode')?.value;
+    if(mode==='files' || mode==='links') $('download-media').checked=mode==='files';
+    updateDestination();
+  }
   function options() {
+    syncDownloadMode();
     const value = {
       format: $('format').value,
       split: $('split').value,
@@ -108,6 +128,7 @@
   function updateSelection() {
     const count = selection().length;
     const selectedScope = scope() === 'selected';
+    start.disabled=running || recoveryBusy || !count;
     $('selection-count').textContent = scope() === 'current' ? 'Открытый чат' : selectedScope ? `${count} из ${chats.length} чатов` : `${count} чатов`;
     $('bulk-actions').hidden = !selectedScope;
     $('select-all').disabled = running || !selectedScope || !chats.length;
@@ -336,7 +357,7 @@
     } catch (error) { note(error.message,true); }
     finally {
       visibilityPrompt(false);
-      running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; updateSelection();
+      running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; recoveryControls(false); updateSelection();
       await renderRecovery();
       if (reportTabId != null) {
         try { await chrome.tabs.update(reportTabId, { active: true }); } catch { /* The report tab may have been closed. */ }
@@ -397,14 +418,14 @@
     if(!durable) return;
     try {
       const saved=await durable.list(), container=$('recovery-list');
-      container.replaceChildren();$('recovery-panel').hidden=!saved.length;
+      container.replaceChildren();if($('history-count')) $('history-count').textContent=String(saved.length);if($('recovery-empty')) $('recovery-empty').hidden=!!saved.length;
       for(const copy of saved) {
         const row=document.createElement('div');row.className='recovery-row';
         const info=document.createElement('div');info.className='recovery-info';
         const title=document.createElement('strong');title.textContent=copy.title;
         const detail=document.createElement('small');
         const state={history:'Чтение истории',media:'Обработка вложений',ready:'Подготовлено к сохранению'}[copy.state] || 'Копия';
-        detail.textContent=`Сообщений: ${copy.messages} · ${new Date(copy.updatedAt).toLocaleString('ru-RU')} · ${state}`;
+        detail.textContent=`Сообщений: ${copy.messages} · ${new Date(copy.updatedAt).toLocaleString('ru-RU')} · Последний сохранённый этап: ${state}`;
         info.append(title,detail);
         const actions=document.createElement('div');actions.className='actions';
         const download=document.createElement('button');download.className='secondary';download.textContent='Скачать сохранённое';download.disabled=running;
@@ -423,6 +444,7 @@
       for (const key of ['format', 'split', 'destination', 'from', 'to', 'limit']) if (saved[key] != null && $(key)) $(key).value = saved[key];
       for (const [key, id] of [['anonymize','anonymize'],['participants','participants'],['media', 'media'], ['downloadMedia', 'download-media'], ['links', 'links'], ['reactions', 'reactions']]) if($(id)) $(id).checked = saved[key] ?? (key==='participants'?true:defaults[key]);
       for(const key of ['photo','video','voice','videoMessage','audio','sticker','gif','file']) if($('type-'+key)) $('type-'+key).checked=saved.mediaTypes?.[key] ?? (saved.media!==false);
+      if($('download-mode')) $('download-mode').value=$('download-media').checked?'files':'links';
       updatePeriod();updatePrivacy();updateDestination();
       connect();
       const current = await call('current');
@@ -436,6 +458,9 @@
   $('select-none').addEventListener('click', () => setChatSelection(false));
   start.addEventListener('click', run);
   $('destination')?.addEventListener('change',updateDestination);
+  $('download-mode')?.addEventListener('change',syncDownloadMode);
+  $('settings-tab')?.addEventListener('click',()=>showView('settings'));
+  $('history-tab')?.addEventListener('click',()=>showView('history'));
   function stopExport() { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
   $('from')?.addEventListener('change',updatePeriod);
   $('to')?.addEventListener('change',updatePeriod);

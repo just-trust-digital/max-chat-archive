@@ -1,65 +1,26 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="styles.css"></head>
-<body class="app">
-  <main class="shell">
-    <header class="topbar"><div class="brand"><span class="mark">M</span><span>MAX Архив</span></div><span class="local">Локальный архив</span></header>
-    <section class="hero"><h1>Настройки экспорта</h1><p>Сохраните переписку и вложения из MAX.</p></section>
-    <div id="status" class="notice" role="status">Подключаемся к вкладке MAX…</div>
-    <div class="grid">
-      <section class="card">
-        <div class="card-head"><div><h2>Чаты</h2><p>Доступные в текущем списке MAX</p></div><button id="refresh" class="text-button" type="button">Обновить</button></div>
-        <fieldset class="scope"><legend class="sr-only">Область экспорта</legend>
-          <label><input type="radio" name="scope" value="current" checked> Открытый чат</label>
-          <label><input type="radio" name="scope" value="selected"> Выбранные чаты</label>
-          <label><input type="radio" name="scope" value="all"> Все найденные чаты</label>
-        </fieldset>
-        <div id="bulk-actions" class="list-actions" hidden><button id="select-all" class="text-button" type="button">Выбрать всё</button><button id="select-none" class="text-button" type="button">Снять выбор</button></div>
-        <div id="chat-list" class="chat-list" aria-live="polite"></div>
-        <p class="hint">Поиск охватывает текущую папку MAX. Для другой папки переключитесь в MAX и обновите список.</p>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>Данные и формат</h2><p>Что сохранить в архиве</p></div></div>
-        <div class="fields">
-          <label class="field">Способ сохранения<select id="destination"><option value="zip">ZIP-архив</option><option value="folder">Папка в Загрузках</option></select></label>
-          <p id="destination-hint" class="hint">ZIP нужно распаковать перед просмотром.</p>
-          <label class="field">Формат
-            <select id="format"><option value="html-json">HTML + JSON</option><option value="json">JSON</option><option value="html">HTML</option><option value="csv">CSV</option><option value="txt">TXT</option></select>
-          </label>
-          <label class="field">Разделение архива
-            <select id="split"><option value="by-chat">Отдельный ZIP на каждый чат</option><option value="combined">Один ZIP для всех чатов</option></select>
-          </label>
-          <fieldset class="period-options"><legend>Период сообщений</legend><div class="pair"><label class="field">С даты<input id="from" type="date"></label><label class="field">По дату<input id="to" type="date"></label></div><p id="period-summary" class="hint">С первого до последнего сообщения</p><p class="hint">Оставьте даты пустыми, чтобы сохранить весь период в пределах максимума сообщений.</p></fieldset>
-          <fieldset class="media-options"><legend>Вложения</legend><input id="media" type="checkbox" checked hidden>
-            <label class="check"><input id="type-photo" type="checkbox" checked><span>Фотографии</span></label>
-            <label class="check"><input id="type-video" type="checkbox" checked><span>Видеозаписи</span></label>
-            <label class="check"><input id="type-voice" type="checkbox" checked><span>Голосовые сообщения</span></label>
-            <label class="check"><input id="type-videoMessage" type="checkbox" checked><span>Видеосообщения</span></label>
-            <label class="check"><input id="type-audio" type="checkbox" checked><span>Аудиофайлы</span></label>
-            <label class="check"><input id="type-sticker" type="checkbox" checked><span>Стикеры</span></label>
-            <label class="check"><input id="type-gif" type="checkbox" checked><span>GIF</span></label>
-            <label class="check"><input id="type-file" type="checkbox" checked><span>Документы и другие файлы</span></label>
-          </fieldset>
-          <label class="check"><input id="download-media" type="checkbox" checked><span><strong>Сохранить файлы вместе с перепиской</strong><small id="download-hint">Для просмотра без интернета. Если выключить, останутся внешние ссылки. До 25 МБ на файл и 250 МБ на ZIP.</small></span></label>
-          <label class="check"><input id="links" type="checkbox" checked><span><strong>Адреса ссылок из сообщений</strong><small>Сохранить распознанные адреса. Текст сообщений остаётся и при выключенной настройке.</small></span></label>
-          <label class="check"><input id="reactions" type="checkbox" checked><span><strong>Реакции на сообщения</strong><small>Отметки под сообщением, например 👍 3. Обычные эмодзи в тексте сохраняются независимо от этой настройки.</small></span></label>
-          <fieldset class="privacy-options"><legend>Участники и приватность</legend>
-            <label class="check"><input id="participants" type="checkbox" checked><span><strong>Список участников группы</strong><small>Доступные имена и роли участников</small></span></label>
-            <label class="check"><input id="anonymize" type="checkbox"><span><strong>Обезличить авторов</strong><small>Скрыть имена в подписях и пересылках, исключить список участников. Текст сообщений и имена файлов не изменяются.</small></span></label>
-          </fieldset>
-          <label class="field">Максимум сообщений на чат<input id="limit" type="number" min="1" max="100000" value="10000"></label>
-        </div>
-      </section>
-    </div>
-    <aside id="visibility-alert" class="visibility-alert" role="alert" hidden><h2>Откройте вкладку MAX</h2><p>Переключитесь на вкладку MAX вручную и оставьте её видимой. Экспорт продолжится автоматически.</p></aside>
-    <section class="runbar"><div><strong id="selection-count">Открытый чат</strong><div class="fine">Во время экспорта держите вкладку MAX видимой.</div></div><div class="actions"><button id="cancel" class="secondary" hidden>Остановить</button><button id="start" class="primary">Скачать ZIP</button></div></section>
-    <section id="progress-panel" class="card progress-panel" hidden><h2>Ход экспорта</h2><div id="overall-text" class="progress-caption">Обработано 0 чатов</div><progress id="progress" max="1" value="0"></progress><div id="progress-text" role="status"></div><progress id="stage-progress" hidden></progress><div id="checkpoint-text" class="hint" role="status"></div><ul id="log" class="chat-progress-list"></ul></section>
-    <details id="recovery-panel" class="card recovery-panel" hidden><summary>История экспорта</summary><p class="hint">Сообщения и скачанные файлы сохраняются в этом браузере. После сбоя можно скачать последнюю копию; она может содержать только часть истории и вложений. Используются настройки исходного экспорта.</p><div id="recovery-list"></div></details>
-  </main>
-  <script src="zip.js"></script>
-  <script src="directory.js"></script>
-  <script src="format.js"></script>
-  <script src="checkpoint.js"></script>
-  <script src="export.js"></script>
-</body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAX Архив — настройки</title><link rel="icon" href="assets/icon-32.png"><link rel="stylesheet" href="styles.css"></head>
+<body class="app"><main class="shell">
+<header class="topbar"><div class="brand"><img src="assets/export.svg" width="40" height="40" alt=""><span>MAX Архив<small>Экспорт переписки</small></span></div><nav class="page-nav" aria-label="Разделы"><button id="settings-tab" class="nav-button" aria-current="page">Настройки</button><button id="history-tab" class="nav-button">История экспорта <span id="history-count" class="badge">0</span></button></nav></header>
+<section class="hero"><p class="eyebrow">НАСТРОЙКИ ЭКСПОРТА</p><h1 id="page-heading">Сохранить переписку</h1><p id="page-description">Выберите чаты и содержимое архива.</p></section>
+<div id="status" class="notice" role="status">Подключаемся к вкладке MAX…</div>
+<section id="settings-panel" aria-label="Настройки экспорта"><div class="grid">
+<section class="card chats-card"><div class="card-head"><h2>Чаты</h2><button id="refresh" class="text-button" type="button">Обновить</button></div>
+<fieldset class="scope"><legend class="sr-only">Область экспорта</legend><label><input type="radio" name="scope" value="current" checked>Открытый чат</label><label><input type="radio" name="scope" value="selected">Выбранные</label><label><input type="radio" name="scope" value="all">Все в папке</label></fieldset>
+<div id="bulk-actions" class="list-actions" hidden><button id="select-all" class="text-button" type="button">Выбрать всё</button><button id="select-none" class="text-button" type="button">Снять выбор</button></div><div id="chat-list" class="chat-list" aria-live="polite"></div><p class="hint">Показаны чаты текущей папки MAX. Для другой папки переключитесь в MAX и обновите список.</p>
+<fieldset class="period-options"><legend>Период сообщений</legend><p id="period-summary" class="hint">С первого до последнего сообщения</p><div class="pair"><label class="field">С даты<input id="from" type="date"></label><label class="field">По дату<input id="to" type="date"></label></div><p class="hint">Пустые даты означают весь период.</p></fieldset>
+<label class="field limit-field">Максимум сообщений на чат<input id="limit" type="number" min="1" max="100000" value="10000"></label></section>
+<section class="card content-card"><div class="card-head"><h2>Содержимое</h2></div><div class="included-row"><div><strong>Текст сообщений</strong><small>Имена, даты, ответы и пересылки</small></div><span>Всегда</span></div>
+<fieldset class="media-options"><legend>Вложения</legend><input id="media" type="checkbox" checked hidden><label class="check"><input id="type-photo" type="checkbox" checked><span>Фотографии</span></label><label class="check"><input id="type-video" type="checkbox" checked><span>Видеозаписи</span></label><label class="check"><input id="type-voice" type="checkbox" checked><span>Голосовые</span></label><label class="check"><input id="type-videoMessage" type="checkbox" checked><span>Видеосообщения</span></label><label class="check"><input id="type-audio" type="checkbox" checked><span>Аудиофайлы</span></label><label class="check"><input id="type-file" type="checkbox" checked><span>Документы</span></label><label class="check"><input id="type-sticker" type="checkbox" checked><span>Стикеры</span></label><label class="check"><input id="type-gif" type="checkbox" checked><span>GIF</span></label></fieldset>
+<label class="field">Как сохранить вложения<select id="download-mode"><option value="files">Файлы вместе с перепиской</option><option value="links">Только внешние ссылки</option></select></label><input id="download-media" type="checkbox" checked hidden><p id="download-hint" class="hint">Для просмотра без интернета. До 25 МБ на файл и 250 МБ на ZIP.</p>
+<div class="extra-options"><label class="option-row"><span><strong>Реакции</strong><small>Отметки под сообщением: 👍 3</small></span><input id="reactions" type="checkbox" checked></label><label class="option-row"><span><strong>Адреса ссылок</strong><small>Распознанные ссылки из сообщений</small></span><input id="links" type="checkbox" checked></label><label class="option-row"><span><strong>Участники группы</strong><small>Доступные имена и роли</small></span><input id="participants" type="checkbox" checked></label></div></section>
+<section class="card output-card"><div class="card-head"><h2>Сохранение</h2></div><div class="fields"><label class="field">Способ сохранения<select id="destination"><option value="zip">ZIP-архив</option><option value="folder">Папка в Загрузках</option></select></label><p id="destination-hint" class="hint">ZIP нужно распаковать перед просмотром.</p><label class="field">Формат<select id="format"><option value="html-json">HTML + JSON</option><option value="html">HTML</option><option value="json">JSON</option><option value="csv">CSV</option><option value="txt">TXT</option></select></label><label class="field">Разделение ZIP<select id="split"><option value="by-chat">Отдельный ZIP на каждый чат</option><option value="combined">Один ZIP для всех чатов</option></select></label></div>
+<fieldset class="privacy-options"><legend>Приватность</legend><label class="option-row"><span><strong>Обезличить авторов</strong></span><input id="anonymize" type="checkbox"></label><p class="hint">Убрать имена и список участников. Упоминания в тексте и имена файлов останутся.</p></fieldset><div class="local-note">Для просмотра результата откройте <strong>index.html</strong> в корне экспорта.</div></section>
+</div></section>
+<section id="recovery-panel" class="card recovery-panel" aria-labelledby="history-heading" hidden><h2 id="history-heading">История экспорта</h2><p class="hint">Сообщения и скачанные файлы, сохранённые в этом браузере. Незавершённая копия может содержать только часть переписки.</p><div id="recovery-empty" class="empty">Пока нет сохранённых экспортов.</div><div id="recovery-list"></div></section>
+<aside id="visibility-alert" class="visibility-alert" role="alert" hidden><h2>Откройте вкладку MAX</h2><p>Переключитесь на MAX вручную и оставьте вкладку видимой. Экспорт продолжится автоматически.</p></aside>
+<section id="runbar" class="runbar"><div><strong id="selection-count">Открытый чат</strong><small>Во время экспорта держите вкладку MAX видимой.</small></div><div class="actions"><button id="cancel" class="secondary" hidden>Остановить</button><button id="start" class="primary">Скачать ZIP</button></div></section>
+<section id="progress-panel" class="card progress-panel" hidden><h2>Ход экспорта</h2><div id="overall-text" class="progress-caption">Обработано 0 чатов</div><progress id="progress" max="1" value="0"></progress><div id="progress-text" role="status"></div><progress id="stage-progress" hidden></progress><div id="checkpoint-text" class="hint" role="status"></div><ul id="log" class="chat-progress-list"></ul></section>
+<footer class="product-footer"><a class="maker" href="https://justtrust.digital" target="_blank" rel="noopener noreferrer"><img class="jtd-light" src="assets/jtd-light.svg" alt="" width="38" height="32"><img class="jtd-dark" src="assets/jtd-dark.svg" alt="" width="38" height="32"><span>Сделано JTD</span></a><a class="github-link" href="https://github.com/just-trust-digital/MaxExport" target="_blank" rel="noopener noreferrer">GitHub ↗</a></footer>
+</main><script src="zip.js"></script><script src="directory.js"></script><script src="format.js"></script><script src="checkpoint.js"></script><script src="export.js"></script></body></html>

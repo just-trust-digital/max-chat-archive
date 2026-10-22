@@ -27,4 +27,7 @@ test('select all and clear all update the selected chat count', () => {
   context.selectionUnderTest.setChatSelection(false);
   assert.deepEqual(inputs.map(input => input.checked), [false, false]);
   assert.equal(controls.get('selection-count').textContent, '0 из 2 чатов');
+  assert.equal(controls.get('start').disabled,true);
+  context.selectionUnderTest.setChatSelection(true);
+  assert.equal(controls.get('start').disabled,false);
 });

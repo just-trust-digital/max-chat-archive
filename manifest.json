@@ -1,23 +1,56 @@
 {
   "manifest_version": 3,
   "name": "MAX Архив",
-  "version": "0.3.10",
-  "description": "Локальный экспорт чатов MAX в ZIP",
-  "permissions": ["tabs", "storage", "downloads"],
-  "host_permissions": ["https://*.max.ru/*", "https://i.oneme.ru/*", "https://fd.oneme.ru/*", "https://*.okcdn.ru/*"],
-  "action": { "default_title": "Экспорт MAX", "default_popup": "popup.html" },
-  "background": { "service_worker": "timer-worker.js" },
+  "version": "0.3.11",
+  "description": "Локальный экспорт чатов MAX с сообщениями и вложениями",
+  "permissions": [
+    "tabs",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.max.ru/*",
+    "https://i.oneme.ru/*",
+    "https://fd.oneme.ru/*",
+    "https://*.okcdn.ru/*"
+  ],
+  "action": {
+    "default_title": "Экспорт MAX",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "32": "assets/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "timer-worker.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://web.max.ru/*"],
-      "js": ["download-bridge.js"],
+      "matches": [
+        "https://web.max.ru/*"
+      ],
+      "js": [
+        "download-bridge.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://web.max.ru/*"],
-      "js": ["format.js", "content.js"],
+      "matches": [
+        "https://web.max.ru/*"
+      ],
+      "js": [
+        "format.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "icons": {
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  }
 }

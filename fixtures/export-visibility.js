@@ -6,7 +6,7 @@
     postMessage(message){
       queueMicrotask(() => {
         if(message.type==='current') receive({id:message.id,type:'result',value:{title:'Пример чата'}});
-        if(message.type==='discover') receive({id:message.id,type:'result',value:{chats:[],complete:true}});
+        if(message.type==='discover') receive({id:message.id,type:'result',value:{chats:new URLSearchParams(location.search).get('chats')==='populated'?[{key:'1',title:'Рабочая группа'},{key:'2',title:'Обсуждение поездки и фотографии за несколько лет — длинное название переписки'},{key:'3',title:'Алексей'}]:[],complete:true}});
         if(message.type==='export') {
           exportId=message.id;
           receive({id:message.id,type:'progress',value:{title:'Пример чата',count:30,stage:'visibility'}});
