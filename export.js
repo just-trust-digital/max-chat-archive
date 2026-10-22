@@ -26,7 +26,20 @@
       else tab?.removeAttribute?.('aria-current');
     }
   }
-  const defaults = { format: 'html-json', split: 'by-chat', destination:'zip', media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
+  class ArchiveBudget {
+    constructor(writer,limit,zip=true) {this.writer=writer;this.limit=limit;this.zip=zip;this.size=zip?22:0;this.files=new Map();}
+    add(name,data) {
+      const bytes=new Blob([data]).size;
+      const next=this.size+bytes+(this.zip?76+2*new Blob([name]).size:-(this.files.get(name)||0));
+      if(next>this.limit) {const error=new Error('Превышен максимальный размер архива (папки). Увеличьте лимит в настройках.');error.code='ARCHIVE_LIMIT';throw error;}
+      const result=this.writer.add(name,data);this.size=next;this.files.set(name,bytes);return result;
+    }
+    get remaining(){return Math.max(0,this.limit-this.size);}
+    get name(){return this.writer.name;}
+    blob(){return this.writer.blob();}
+    flush(){return this.writer.flush();}
+  }
+  const defaults = { format: 'html-json', split: 'by-chat', destination:'zip', maxFileMB:25, maxArchiveMB:250, media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
 
   function note(message, error = false) { status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
   function stage(message, completed = null, total = null) {
@@ -112,9 +125,12 @@
       anonymize:!!$('anonymize')?.checked, participants:!!$('participants')?.checked && !$('anonymize')?.checked,
       downloadMedia: $('download-media').checked,
       links: $('links').checked, reactions: $('reactions').checked,
+      maxFileMB:Number($('max-file-mb')?.value || defaults.maxFileMB),
+      maxArchiveMB:Number($('max-archive-mb')?.value || defaults.maxArchiveMB),
       limit: Number($('limit').value)
     };
     if($('type-photo')) value.media=Object.values(value.mediaTypes).some(Boolean);
+    for(const [key,max,label] of [['maxFileMB',2000,'файла'],['maxArchiveMB',4000,'архива (папки)']]) if(!Number.isInteger(value[key]) || value[key]<1 || value[key]>max) throw new Error(`Размер ${label}: укажите целое число от 1 до ${max} МБ.`);
     if (!Number.isInteger(value.limit) || value.limit < 1 || value.limit > 100000) throw new Error('Укажите максимум от 1 до 100 000 сообщений.');
     if (value.from && value.to && value.from > value.to) throw new Error('Начальная дата позже конечной.');
     return value;
@@ -165,7 +181,7 @@
   async function readLimited(response, controller, limit) {
     if (!response.body) {
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.length > limit) throw new Error('Файл больше 25 МБ');
+      if (bytes.length > limit) throw new Error(`Файл больше ${Math.round(limit/1024/1024)} МБ`);
       return bytes;
     }
     const reader = response.body.getReader();
@@ -175,7 +191,7 @@
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > limit) { controller.abort(); throw new Error('Файл больше 25 МБ'); }
+      if (size > limit) { controller.abort(); throw new Error(`Файл больше ${Math.round(limit/1024/1024)} МБ`); }
       chunks.push(value);
     }
     const bytes = new Uint8Array(size);
@@ -183,7 +199,7 @@
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     return bytes;
   }
-  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024) {
+  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024, fileLimit = 25 * 1024 * 1024) {
     let total = initialBytes;
     const used = new Map();
     const media=chat.messages.flatMap(message=>message.attachments);
@@ -199,7 +215,7 @@
       try {
         const url = new URL(attachment.inlineData || attachment.url);
         const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
-        const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=36*1024*1024;
+        const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=Math.ceil(fileLimit*4/3)+1024;
         if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost)) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= byteLimit) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
@@ -208,10 +224,10 @@
         const response = await fetch(url.href, { credentials: 'include', signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const size = Number(response.headers.get('content-length'));
-        if (size > 25 * 1024 * 1024) throw new Error('Файл больше 25 МБ');
-        const bytes = await readLimited(response, controller, 25 * 1024 * 1024);
+        if (size > fileLimit) throw new Error(`Файл больше ${fileLimit/1024/1024} МБ`);
+        const bytes = await readLimited(response, controller, Math.min(fileLimit,byteLimit-total,zip.remaining ?? Infinity));
         attachment.mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-        if (bytes.length > 25 * 1024 * 1024 || total + bytes.length > byteLimit) throw new Error('Превышен лимит размера');
+        if (bytes.length > fileLimit || total + bytes.length > byteLimit) throw new Error('Превышен лимит размера');
         let name = ArchiveFormat.safeName(attachment.name || decodeURIComponent(url.pathname.split('/').pop()) || attachment.kind);
         if (!/\.[A-Za-z0-9]{1,6}$/.test(name)) {
           const type = response.headers.get('content-type') || '';
@@ -266,7 +282,8 @@
       const perChat = !folder && settings.split === 'by-chat';
       running = true; stopped = false; recoveryControls(true); start.disabled = true; cancel.hidden = false;
       const folderName=`max-archive-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}-${typeof crypto!=='undefined' && crypto.randomUUID?crypto.randomUUID().slice(0,8):Math.random().toString(36).slice(2,10)}`;
-      const directory=folder?new DirectoryArchive((blob,name)=>saveBlob(blob,name,true),folderName):null;
+      const archiveLimit=settings.maxArchiveMB*1024*1024;
+      const directory=folder?new ArchiveBudget(new DirectoryArchive((blob,name)=>saveBlob(blob,name,true),folderName),archiveLimit,false):null;
       $('progress-panel').hidden = false; log.replaceChildren(); updateSelection();
       $('progress').max = selected.length; $('progress').value = 0;
       $('overall-text').textContent = `Обработано 0 из ${selected.length} чатов`;
@@ -282,7 +299,7 @@
       // MAX needs an active tab: background timer throttling can consume the
       // history deadline before even one screenful has been traversed.
       await showMax();
-      const combinedZip = directory || (perChat ? null : new ZipArchive());
+      const combinedZip = directory || (perChat ? null : new ArchiveBudget(new ZipArchive(),archiveLimit));
       const report = { exportedAt: new Date().toISOString(), extensionVersion: chrome.runtime.getManifest().version, source: 'web.max.ru', options: settings, discoveryComplete: scope() === 'current' ? null : discoveryComplete, chats: [], skippedMedia: [], errors: [], mediaBytes: 0 };
       if(directory) {ArchiveFormat.addIndex(directory,[],settings.format);directory.add('report.json',JSON.stringify(report,null,2));await directory.flush();}
       const runId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -308,14 +325,14 @@
           result.messages = ArchiveFormat.filter(result.messages, settings);
           await saveCopy(result,'media');
           const path = filename(index, result);
-          const zip = perChat ? new ZipArchive() : combinedZip;
+          const zip = perChat ? new ArchiveBudget(new ZipArchive(),archiveLimit) : combinedZip;
           const skippedBefore = report.skippedMedia.length;
           let chatMediaBytes = 0;
           if (settings.media && settings.downloadMedia && !stopped) {
             rows[index].textContent = `${result.title} — загрузка вложений`;
             const total = await downloadMedia(zip, result, path, report, perChat ? 0 : report.mediaBytes, (done, count) => {
               stage(`Чат ${index + 1} из ${selected.length}: скачивание файлов ${done} из ${count}`, done, count);
-            },checkpointId,folder?Infinity:250*1024*1024);
+            },checkpointId,archiveLimit,settings.maxFileMB*1024*1024);
             chatMediaBytes = perChat ? total : total - report.mediaBytes;
             report.mediaBytes += chatMediaBytes;
           }
@@ -334,7 +351,7 @@
         } catch (error) {
           report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
           rows[index].textContent = `${info?.title || 'Открытый чат'} — ошибка: ${error.message}`;
-          if (['MAX_HIDDEN','CHECKPOINT_WRITE','EXPORT_BUSY','DIRECTORY_WRITE'].includes(error.code)) stopped = true;
+          if (['MAX_HIDDEN','CHECKPOINT_WRITE','EXPORT_BUSY','DIRECTORY_WRITE','ARCHIVE_LIMIT'].includes(error.code)) stopped = true;
         }
         $('progress').value = index + 1;
         $('overall-text').textContent = `Обработано ${index + 1} из ${selected.length} чатов`;
@@ -377,13 +394,14 @@
       const files=await durable.files(id), zip=new ZipArchive();
       const chat=ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(saved.chat,saved.settings):saved.chat;
       const byUrl=new Map(files.map(file=>[file.url,file]));
+      const voiceLimit=(saved.settings.maxFileMB || 25)*1024*1024;
       let recoveredVoices=0;
       chat.messages=ArchiveFormat.filter(chat.messages,saved.settings);
       for(const message of chat.messages) for(const attachment of message.attachments) {
         delete attachment.localPath;delete attachment.posterPath;
-        if(!byUrl.has(attachment.url) && attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=36*1024*1024) {
+        if(!byUrl.has(attachment.url) && attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=Math.ceil(voiceLimit*4/3)+1024) {
           const binary=atob(attachment.inlineData.split(',')[1]);
-          if(binary.length<=25*1024*1024) {
+          if(binary.length<=voiceLimit) {
             const mimeType=attachment.inlineData.slice(5).split(';')[0];
             const ext={'audio/ogg':'.ogg','audio/mpeg':'.mp3','audio/wav':'.wav','audio/webm':'.webm','audio/mp4':'.m4a','audio/aac':'.aac','audio/opus':'.opus'}[mimeType] || '.audio';
             const value={url:attachment.url,localPath:`media/recovered-voice-${++recoveredVoices}${ext}`,mimeType,bytes:Uint8Array.from(binary,char=>char.charCodeAt(0))};
@@ -441,7 +459,10 @@
     await renderRecovery();
     try {
       const saved = (await chrome.storage.local.get('settings')).settings || defaults;
-      for (const key of ['format', 'split', 'destination', 'from', 'to', 'limit']) if (saved[key] != null && $(key)) $(key).value = saved[key];
+      for (const key of ['format', 'split', 'destination', 'from', 'to', 'limit', 'maxFileMB', 'maxArchiveMB']) if (saved[key] != null && $(key)) $(key).value = saved[key];
+      if($('max-file-mb')) $('max-file-mb').value=saved.maxFileMB ?? defaults.maxFileMB;
+      if($('max-archive-mb')) $('max-archive-mb').value=saved.maxArchiveMB ?? defaults.maxArchiveMB;
+      updateSizeControls();
       for (const [key, id] of [['anonymize','anonymize'],['participants','participants'],['media', 'media'], ['downloadMedia', 'download-media'], ['links', 'links'], ['reactions', 'reactions']]) if($(id)) $(id).checked = saved[key] ?? (key==='participants'?true:defaults[key]);
       for(const key of ['photo','video','voice','videoMessage','audio','sticker','gif','file']) if($('type-'+key)) $('type-'+key).checked=saved.mediaTypes?.[key] ?? (saved.media!==false);
       if($('download-mode')) $('download-mode').value=$('download-media').checked?'files':'links';
@@ -457,6 +478,13 @@
   $('select-all').addEventListener('click', () => setChatSelection(true));
   $('select-none').addEventListener('click', () => setChatSelection(false));
   start.addEventListener('click', run);
+  function updateSizeControls() {
+    for(const name of ['file','archive']) if($('max-'+name+'-range') && $('max-'+name+'-mb')) $('max-'+name+'-range').value=$('max-'+name+'-mb').value;
+  }
+  for(const name of ['file','archive']) {
+    $('max-'+name+'-range')?.addEventListener('input',()=>{$('max-'+name+'-mb').value=$('max-'+name+'-range').value;});
+    $('max-'+name+'-mb')?.addEventListener('input',updateSizeControls);
+  }
   $('destination')?.addEventListener('change',updateDestination);
   $('download-mode')?.addEventListener('change',syncDownloadMode);
   $('settings-tab')?.addEventListener('click',()=>showView('settings'));

@@ -34,7 +34,7 @@
       let href=url;
       if(url.startsWith('blob:')) {
         const response=await fetch(url), buffer=await response.arrayBuffer();
-        if(buffer.byteLength>25*1024*1024) throw Error('voice_too_large');
+        if(buffer.byteLength>job.maxBytes) throw Error('voice_too_large');
         const bytes=new Uint8Array(buffer);let binary='';
         for(let index=0;index<bytes.length;index+=32768) binary+=String.fromCharCode(...bytes.subarray(index,index+32768));
         const mime=/^audio\/[a-z0-9.+-]+$/i.test(response.headers.get('content-type') || '') ? response.headers.get('content-type') : 'audio/ogg';
@@ -47,11 +47,11 @@
   }
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.marker !== marker) return;
-    const { type, nonce, mode } = event.data;
+    const { type, nonce, mode, maxBytes } = event.data;
     if (type === 'cancel' && active?.nonce === nonce) { disarm(); return; }
     if (type !== 'arm' || typeof nonce !== 'string' || nonce.length > 100) return;
     disarm();
-    active = { nonce, mode, timer: setTimeout(disarm, 16000) };
+    active = { nonce, mode, maxBytes:Number.isFinite(maxBytes)?Math.min(2000*1024*1024,Math.max(1,maxBytes)):25*1024*1024, timer: setTimeout(disarm, 16000) };
     HTMLAnchorElement.prototype.click = captureClick;
     if(mode==='voice' && mediaPrototype) mediaPrototype.play=captureAudioPlay;
     window.postMessage({ marker, type: 'ready', nonce }, location.origin);

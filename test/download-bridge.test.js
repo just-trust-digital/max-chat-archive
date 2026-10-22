@@ -68,3 +68,8 @@ test('temporary voice blob is captured as bounded inline audio data',async()=>{
  await new state.HTMLMediaElement('blob:https://web.max.ru/synthetic').play();await new Promise(resolve=>setImmediate(resolve));
  assert.equal(state.messages.at(-1).href,'data:audio/ogg;base64,T2dnUw==');assert.equal(state.played(),0);assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
 });
+
+
+test('voice blob respects the configured byte limit without playback',async()=>{
+ const state=bridge();state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'small',mode:'voice',maxBytes:3});await new state.HTMLMediaElement('blob:https://web.max.ru/synthetic').play();await new Promise(resolve=>setImmediate(resolve));assert.equal(state.messages.at(-1).href,'');assert.equal(state.played(),0);
+});

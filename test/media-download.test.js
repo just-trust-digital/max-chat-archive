@@ -155,3 +155,16 @@ test('inline voice uses a compact storage key and removes base64 from completed 
  await exporter.downloadMedia({add(){}},{messages:[{attachments:[voice]}]},'chat',{skippedMedia:[]},0,()=>{},'checkpoint');
  assert.equal(fetched,data);assert.deepEqual(saved,['inline-voice:one']);assert.equal(voice.inlineData,undefined);assert.match(voice.localPath,/\.ogg$/);
 });
+
+
+test('configured file limit rejects declared and streamed sizes but accepts the exact boundary',async()=>{
+ for(const declared of [true,false]) {
+  const exporter=loadExporter(async()=>new Response(new Uint8Array([1,2,3,4]),{headers:declared?{'content-length':'4'}:{}}));
+  for(const limit of [3,4]) {const report={skippedMedia:[]},files=[];await exporter.downloadMedia({add:(_name,bytes)=>files.push(bytes)}, {messages:[{attachments:[{name:'file',url:'https://st.max.ru/file',downloadable:true}]}]},'chat',report,0,()=>{},null,20,limit);assert.equal(files.length,limit===4?1:0);assert.equal(report.skippedMedia.length,limit===4?0:1);}
+ }
+});
+test('folder and combined media honor the remaining shared byte allowance',async()=>{
+ const exporter=loadExporter(async()=>new Response(new Uint8Array([1,2,3])));const report={skippedMedia:[]},files=[];
+ const total=await exporter.downloadMedia({add:(_name,bytes)=>files.push(bytes)}, {messages:[{attachments:[{name:'file',url:'https://st.max.ru/file',downloadable:true}]}]},'chat',report,4,()=>{},null,6,10);
+ assert.equal(total,4);assert.equal(files.length,0);assert.equal(report.skippedMedia.length,1);
+});

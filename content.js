@@ -210,7 +210,7 @@
   function signature(item) {
     return JSON.stringify([item.time, item.direction, item.text?.replace(/\s+/g, ' ').trim(), item.attachments.map(a => [a.kind, a.source?.startsWith('download-button') ? 'download-button' : a.name])]);
   }
-  function captureButton(button, mode = 'file') {
+  function captureButton(button, mode = 'file', maxFileMB = 25) {
     return new Promise(resolve => {
       const marker = 'max-archive-download-capture';
       const nonce = crypto.randomUUID();
@@ -240,7 +240,7 @@
         }
       }
       window.addEventListener('message', onMessage);
-      window.postMessage({ marker, type: 'arm', nonce, mode }, location.origin);
+      window.postMessage({ marker, type: 'arm', nonce, mode, maxBytes:maxFileMB*1024*1024 }, location.origin);
     });
   }
   async function capturePhoto(tile, assertActive, progress = () => {}) {
@@ -330,7 +330,7 @@
       const voices=items[index].attachments.filter(item=>item.source==='voice-tile');
       for(let voiceIndex=0;voiceIndex<Math.min(voices.length,voiceButtons.length);voiceIndex++) {
         assertActive(); const key=`${messageKey}:voice:${voiceIndex}`;
-        if(!cache.has(key)) await resolveFile(key,voices[voiceIndex].name,()=>captureButton(voiceButtons[voiceIndex],'voice'));
+        if(!cache.has(key)) await resolveFile(key,voices[voiceIndex].name,()=>captureButton(voiceButtons[voiceIndex],'voice',options.maxFileMB ?? 25));
         const captured=cache.get(key);
         if(captured?.url) Object.assign(voices[voiceIndex],{url:captured.url,inlineData:captured.inlineData,downloadable:true,source:'voice-url'});
         else voices[voiceIndex].resolutionError='voice_url_unavailable';
