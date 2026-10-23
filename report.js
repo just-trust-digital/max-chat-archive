@@ -101,7 +101,7 @@
       $('report-send').textContent = report.state === 'sent' ? 'Отправлено' : 'Повторить отправку';
       $('report-send').disabled = report.state === 'sent' || report.state === 'failed';
       if (report.state === 'queued') message('Не удалось отправить; попробуйте позже.');
-      if (report.state === 'sent') { message('Обращение получено. Спасибо.'); $('report-cancel').textContent = 'Закрыть'; }
+      if (report.state === 'sent') { message('Спасибо, что написали нам! Ваш отзыв помогает делать MAX Архив лучше.'); $('report-cancel').textContent = 'Закрыть'; }
       if (report.state === 'failed') message('Отчёт отклонён. Создайте новый отчёт с другим текстом.', true);
     }
     render();
@@ -142,7 +142,7 @@
     try {
       if (!report.attempts) await save();
       report = await MaxReportStore.send(report.report_id);
-      message('Обращение получено. Спасибо.');
+      message('Спасибо, что написали нам! Ваш отзыв помогает делать MAX Архив лучше.');
       $('report-send').textContent = 'Отправлено';
       $('report-cancel').textContent = 'Закрыть';
       screenshots = [];
