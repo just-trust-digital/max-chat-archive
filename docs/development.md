@@ -8,7 +8,7 @@
 
 ## GlitchTip
 
-В общем GlitchTip на `https://pult.justtrust.digital/bugs/` есть отдельный проект `MaxExport`. Форма посылает отчёт только после просмотра и согласия на `https://pult.justtrust.digital/bugs/report/v1`. Отдельный приёмник сохраняет исходный отчёт с уникальным `(product, report_id)` в закрытом SQLite inbox; техническое событие без текста и контакта пересылает в GlitchTip. Ключ проекта хранится только на `koara-live`, в пакет не входит. Отправка ограничена 20 локальными записями за 14 дней, шестью попытками с backoff и лимитами приёмника. Отказ или закрытие вкладки MAX не считается крашем. Подробности сервера и проверок — в [AgentOps runbook](https://github.com/just-trust-digital/AgentOps/blob/codex/glitchtip-pult-memory/services/glitchtip/README.md) (закрытый репозиторий).
+В общем GlitchTip на `https://pult.justtrust.digital/bugs/` есть отдельный проект `MaxExport`. Форма посылает отчёт только после просмотра и согласия на `https://pult.justtrust.digital/bugs/report/v1`. Отдельный приёмник сохраняет исходный отчёт с уникальным `(product, report_id)` в закрытом SQLite inbox; подтверждённый пользователем текст пересылает в закрытую карточку GlitchTip: кратко в заголовок и полностью в контекст события. Контакт остаётся только в приёмнике. Ключ проекта хранится только на `koara-live`, в пакет не входит. Отправка ограничена 20 локальными записями за 14 дней, шестью попытками с backoff и лимитами приёмника. Отказ или закрытие вкладки MAX не считается крашем. Подробности сервера и проверок — в [AgentOps runbook](https://github.com/just-trust-digital/AgentOps/blob/codex/glitchtip-pult-memory/services/glitchtip/README.md) (закрытый репозиторий).
 
 ## Проверки
 
