@@ -1,6 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const updates = require('../updates.js');
+test('update section sits before footer, collapses without a new version and expands for updates/errors', async () => {
+  const priorFetch = global.fetch;
+  function node(tag) { return { tag, children: [], open: false, setAttribute() {}, addEventListener() {}, append(...items) { this.children.push(...items); } }; }
+  global.document = { createElement: node };
+  global.chrome = { runtime: { getManifest: () => ({ version: '0.3.14' }) } };
+  try {
+    for (const mode of ['current', 'available', 'offline']) {
+      const footer = node('footer');
+      let panel;
+      const root = { querySelector: () => footer, insertBefore(value, before) { assert.equal(before, footer); panel = value; } };
+      global.fetch = async () => {
+        if (mode === 'offline') throw Error('offline');
+        return { ok: true, json: async () => mode === 'available' ? [release('0.3.15')] : [] };
+      };
+      await updates.mount(root);
+      assert.equal(panel.tag, 'details');
+      assert.equal(panel.open, mode !== 'current');
+      assert.equal(panel.children[0].tag, 'summary');
+      assert.equal(panel.children[1].children[0].textContent, mode === 'available' ? 'Скачать версию 0.3.15' : mode === 'offline' ? 'Повторить проверку' : 'Проверить обновления');
+    }
+  } finally { global.fetch = priorFetch; delete global.chrome; delete global.document; }
+});
 const repository = 'https://github.com/just-trust-digital/max-chat-archive';
 function release(version, extra = {}) {
   return { tag_name: `v${version}`, assets: [{ name: `max-archive-${version}-test.zip`, state: 'uploaded', browser_download_url: `${repository}/releases/download/v${version}/max-archive-${version}-test.zip` }], ...extra };

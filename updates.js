@@ -43,9 +43,14 @@ const MaxUpdates = (() => {
     return id;
   }
   async function mount(root) {
-    const panel = document.createElement('section');
+    const panel = document.createElement('details');
     panel.className = 'update-panel';
+    panel.open = true;
     panel.setAttribute('aria-label', 'Обновление расширения');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Обновления';
+    const content = document.createElement('div');
+    content.className = 'update-content';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'secondary';
@@ -54,21 +59,28 @@ const MaxUpdates = (() => {
     const status = document.createElement('div');
     status.className = 'update-status';
     status.setAttribute('role', 'status');
-    panel.append(button, status);
-    root.prepend(panel);
+    content.append(button, status);
+    panel.append(summary, content);
+    root.insertBefore(panel, root.querySelector('.product-footer'));
     let release = null, busy = false;
     async function refresh() {
       button.disabled = true;
       try {
         release = await check();
         if (release) {
+          panel.open = true;
+          summary.textContent = `Обновление ${release.version}`;
           button.textContent = `Скачать версию ${release.version}`;
           status.textContent = 'Доступно обновление MAX Архив.';
         } else {
+          panel.open = false;
+          summary.textContent = 'Обновления';
           button.textContent = 'Проверить обновления';
           status.textContent = 'У вас установлена актуальная версия, обновление не требуется.';
         }
       } catch {
+        panel.open = true;
+        summary.textContent = 'Обновления';
         release = null;
         button.textContent = 'Повторить проверку';
         status.textContent = 'Не удалось проверить GitHub. Попробуйте позже.';
