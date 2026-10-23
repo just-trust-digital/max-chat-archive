@@ -1,0 +1,193 @@
+[
+  {
+    "name": "empty-light-390",
+    "width": 390,
+    "scrollWidth": 390,
+    "imageCount": 0,
+    "consentVisible": false,
+    "outsideControls": [],
+    "send": {
+      "left": 37,
+      "right": 191,
+      "top": 1042.03125,
+      "bottom": 1086.03125
+    },
+    "cancel": {
+      "left": 199,
+      "right": 353,
+      "top": 1042.03125,
+      "bottom": 1086.03125
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-light-390",
+    "width": 390,
+    "scrollWidth": 390,
+    "imageCount": 1,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 37,
+      "right": 191,
+      "top": 1359.390625,
+      "bottom": 1403.390625
+    },
+    "cancel": {
+      "left": 199,
+      "right": 353,
+      "top": 1359.390625,
+      "bottom": 1403.390625
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-dark-390",
+    "width": 390,
+    "scrollWidth": 390,
+    "imageCount": 1,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 37,
+      "right": 191,
+      "top": 1359.390625,
+      "bottom": 1403.390625
+    },
+    "cancel": {
+      "left": 199,
+      "right": 353,
+      "top": 1359.390625,
+      "bottom": 1403.390625
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-two-light-390",
+    "width": 390,
+    "scrollWidth": 390,
+    "imageCount": 2,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 37,
+      "right": 191,
+      "top": 1631.75,
+      "bottom": 1675.75
+    },
+    "cancel": {
+      "left": 199,
+      "right": 353,
+      "top": 1631.75,
+      "bottom": 1675.75
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-light-768",
+    "width": 768,
+    "scrollWidth": 768,
+    "imageCount": 1,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 55,
+      "right": 175,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "cancel": {
+      "left": 183,
+      "right": 303,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-two-dark-768",
+    "width": 768,
+    "scrollWidth": 768,
+    "imageCount": 2,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 55,
+      "right": 175,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "cancel": {
+      "left": 183,
+      "right": 303,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "images-dark-1280",
+    "width": 1280,
+    "scrollWidth": 1280,
+    "imageCount": 1,
+    "consentVisible": true,
+    "outsideControls": [],
+    "send": {
+      "left": 311,
+      "right": 431,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "cancel": {
+      "left": 439,
+      "right": 559,
+      "top": 1251.6875,
+      "bottom": 1295.6875
+    },
+    "status": "",
+    "errors": []
+  },
+  {
+    "name": "long-light-390",
+    "width": 390,
+    "scrollWidth": 390,
+    "imageCount": 0,
+    "consentVisible": false,
+    "outsideControls": [],
+    "send": {
+      "left": 37,
+      "right": 191,
+      "top": 1042.03125,
+      "bottom": 1086.03125
+    },
+    "cancel": {
+      "left": 199,
+      "right": 353,
+      "top": 1042.03125,
+      "bottom": 1086.03125
+    },
+    "status": "Экспорт неожиданно прервался. Опишите, что вы делали, и проверьте отчёт.",
+    "errors": []
+  },
+  {
+    "name": "error-dark-390",
+    "scrollWidth": 390,
+    "width": 390,
+    "imageCount": 1,
+    "status": "Не удалось отправить; попробуйте позже."
+  },
+  {
+    "name": "touch-selection-send",
+    "mime": "image/webp",
+    "bytes": 7290,
+    "prefix": "UklGRnIc",
+    "consentStatus": "Проверьте скриншоты и подтвердите их отправку.",
+    "sentStatus": "Обращение получено. Спасибо."
+  }
+]

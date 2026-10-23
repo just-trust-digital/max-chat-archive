@@ -3,12 +3,19 @@
   const params = new URLSearchParams(location.search);
   const values = {};
   const id = '00000000-0000-4000-8000-000000000001';
-  if (params.get('fixture') === 'crash' || params.get('fixture') === 'long') {
-    values.maxArchiveReports = [{ report_id: id, product: 'maxexport', kind: 'crash',
-      created_at: new Date().toISOString(), release: '0.3.13', environment: 'browser-extension',
+  if (['crash', 'long', 'images', 'images-two'].includes(params.get('fixture'))) {
+    const imageFixture = ['images', 'images-two'].includes(params.get('fixture'));
+    const canvas = document.createElement('canvas');
+    canvas.width = 440; canvas.height = 240;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#dbeafe'; context.fillRect(0, 0, 440, 240);
+    context.fillStyle = '#17345c'; context.font = 'bold 32px Arial'; context.fillText('ТЕСТОВЫЙ СНИМОК', 22, 125);
+    values.maxArchiveReports = [{ report_id: id, product: 'maxexport', kind: imageFixture ? 'problem' : 'crash',
+      created_at: new Date().toISOString(), release: '0.3.16', environment: 'browser-extension',
       component: 'export', error_code: 'INTERRUPTED_EXPORT',
-      text: params.get('fixture') === 'long' ? 'Синтетическое описание ошибки. '.repeat(30) : '',
-      contact: '', state: 'draft', attempts: 0, next_attempt_at: null }];
+      text: params.get('fixture') === 'long' ? 'Синтетическое описание ошибки. '.repeat(30) : (imageFixture ? 'Пример обращения со скриншотом' : ''),
+      contact: '', screenshots: imageFixture ? Array.from({ length: params.get('fixture') === 'images-two' ? 2 : 1 }, () => ({ mime: 'image/webp', data: canvas.toDataURL('image/webp').split(',')[1] })) : [],
+      state: 'draft', attempts: 0, next_attempt_at: null }];
     const url = new URL(location.href);
     url.searchParams.set('draft', id);
     history.replaceState(null, '', url);
@@ -19,7 +26,7 @@
       async set(patch) { Object.assign(values, structuredClone(patch)); },
       async remove(key) { delete values[key]; }
     } },
-    runtime: { getManifest: () => ({ version: '0.3.13' }), getURL: path => '/' + path }
+    runtime: { getManifest: () => ({ version: '0.3.16' }), getURL: path => '/' + path }
   };
   const originalFetch = window.fetch.bind(window);
   window.fetch = (url, options) => {

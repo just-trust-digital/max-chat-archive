@@ -5,6 +5,9 @@
   const MAX_REPORTS = 20;
   const MAX_AGE = 14 * 24 * 60 * 60 * 1000;
   const MAX_ATTEMPTS = 6;
+  const MAX_SCREENSHOTS = 2;
+  const MAX_IMAGE_CHARS = 4 * Math.ceil((160 * 1024) / 3);
+  const MAX_QUEUE_IMAGE_CHARS = 3 * 1024 * 1024;
   const ENDPOINT = 'https://pult.justtrust.digital/bugs/report/v1';
   const VALID_KINDS = new Set(['problem', 'idea', 'crash']);
   const VALID_COMPONENTS = new Set(['popup', 'export', 'recovery', 'extension']);
@@ -49,6 +52,7 @@
       error_code: technical.error_code ? cleanCode(technical.error_code) : (kind === 'crash' ? 'UNEXPECTED_ERROR' : 'NO_ERROR'),
       text: '',
       contact: '',
+      screenshots: [],
       state: 'draft',
       attempts: 0,
       next_attempt_at: null
@@ -67,6 +71,20 @@
     report.text = String(values.text || '').trim().slice(0, 1500);
     report.contact = String(values.contact || '').trim().slice(0, 120);
     report.kind = cleanKind(values.kind || report.kind);
+    if (values.screenshots !== undefined) {
+      const screenshots = values.screenshots;
+      if (!Array.isArray(screenshots) || screenshots.length > MAX_SCREENSHOTS ||
+          screenshots.some(item => item?.mime !== 'image/webp' || typeof item.data !== 'string' ||
+            item.data.length > MAX_IMAGE_CHARS || !/^[A-Za-z0-9+/]+={0,2}$/.test(item.data))) {
+        throw new Error('Выберите не более двух небольших скриншотов.');
+      }
+      const otherChars = (await list()).filter(item => item.report_id !== id)
+        .flatMap(item => item.screenshots || []).reduce((sum, item) => sum + item.data.length, 0);
+      if (otherChars + screenshots.reduce((sum, item) => sum + item.data.length, 0) > MAX_QUEUE_IMAGE_CHARS) {
+        throw new Error('Для новых скриншотов пока недостаточно места в браузере.');
+      }
+      report.screenshots = screenshots;
+    }
     report.state = 'draft';
     return put(report);
   }
@@ -74,7 +92,7 @@
     await save((await list()).filter(item => item.report_id !== id));
   }
   function payload(report) {
-    return {
+    const data = {
       report_id: report.report_id,
       product: 'maxexport',
       report_kind: report.kind,
@@ -86,6 +104,8 @@
       text: report.text,
       contact: report.contact
     };
+    if (report.screenshots?.length) data.screenshots = report.screenshots;
+    return data;
   }
   async function send(id) {
     const report = await get(id);
@@ -120,6 +140,8 @@
       report.state = 'sent';
       report.receipt_at = new Date().toISOString();
       report.next_attempt_at = null;
+      report.sent_screenshot_count = report.screenshots?.length || 0;
+      report.screenshots = [];
       return await put(report);
     } catch {
       report.state = terminal ? 'failed' : 'queued';

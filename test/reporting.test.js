@@ -97,3 +97,32 @@ test('HTTP-date Retry-After delays a stable queued report', async () => {
   assert.equal(queued.attempts, 1);
   assert.ok(Date.parse(queued.next_attempt_at) >= Date.now() + 120000);
 });
+
+test('selected screenshots stay byte-identical through retry and leave local queue after receipt', async () => {
+  const bodies = [];
+  let offline = true;
+  const { store, values } = setup(async (_url, request) => {
+    bodies.push(JSON.parse(request.body));
+    if (offline) { offline = false; throw Error('offline'); }
+    return { ok: true, status: 200, json: async () => ({ product: 'maxexport', report_id: bodies.at(-1).report_id }) };
+  });
+  const screenshot = { mime: 'image/webp', data: 'UklGRgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' };
+  const draft = await store.create('problem');
+  await store.update(draft.report_id, { text: 'Synthetic image', contact: '', kind: 'problem', screenshots: [screenshot] });
+  await assert.rejects(store.send(draft.report_id), /Не удалось отправить/);
+  assert.equal((await store.get(draft.report_id)).screenshots[0].data, screenshot.data);
+  values.maxArchiveReports[0].next_attempt_at = new Date(Date.now() - 1).toISOString();
+  const sent = await store.send(draft.report_id);
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(sent.sent_screenshot_count, 1);
+  assert.equal(sent.screenshots.length, 0);
+});
+
+test('screenshot count and local queue capacity are bounded', async () => {
+  const { store } = setup(async () => { throw Error('unexpected send'); });
+  const draft = await store.create('idea');
+  const screenshot = { mime: 'image/webp', data: 'AAAA' };
+  await assert.rejects(store.update(draft.report_id, { screenshots: [screenshot, screenshot, screenshot] }), /не более двух/);
+  await assert.rejects(store.update(draft.report_id, { screenshots: [{ mime: 'image/svg+xml', data: 'AAAA' }] }), /не более двух/);
+  assert.equal((await store.get(draft.report_id)).screenshots.length, 0);
+});

@@ -2,15 +2,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-async function setup({ offline = false } = {}) {
+async function setup({ offline = false, screenshots = [] } = {}) {
   const nodes = new Map(), events = [], records = new Map();
   const node = id => {
-    if (!nodes.has(id)) nodes.set(id, { value: '', checked: false, dataset: {}, textContent: '', listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } });
+    if (!nodes.has(id)) nodes.set(id, { value: '', checked: false, dataset: {}, textContent: '', listeners: {}, children: [], addEventListener(type, fn) { this.listeners[type] = fn; }, replaceChildren() { this.children = []; }, append(...items) { this.children.push(...items); }, setAttribute() {} });
     return nodes.get(id);
   };
   const store = {
     async get(id) { return records.get(id) || null; },
-    async create(kind) { const item = { report_id: 'stable-id', kind, state: 'draft', attempts: 0, release: '0.3.13' }; records.set(item.report_id, item); return item; },
+    async create(kind) { const item = { report_id: 'stable-id', kind, state: 'draft', attempts: 0, release: '0.3.13', screenshots }; records.set(item.report_id, item); return item; },
     async update(id, values) { Object.assign(records.get(id), values); return records.get(id); },
     payload(item) { return { ...item, report_kind: item.kind }; },
     async remove(id) { records.delete(id); events.push('removed'); },
@@ -21,7 +21,7 @@ async function setup({ offline = false } = {}) {
     }
   };
   vm.runInNewContext(fs.readFileSync('report.js', 'utf8'), {
-    document: { getElementById: node }, location: { search: '' }, URLSearchParams,
+    document: { getElementById: node, createElement: () => ({ children: [], append(...items) { this.children.push(...items); }, addEventListener() {}, setAttribute() {} }) }, location: { search: '' }, URLSearchParams,
     MaxReportStore: store, history: { length: 1 }, window: { close() { events.push('closed'); } }
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -60,4 +60,17 @@ test('delivery error permits retry and cancel without a separate save action', a
   assert.doesNotMatch(app.node('report-status').textContent, /браузер|сохран/i);
   await app.node('report-cancel').listeners.click();
   assert.equal(app.records.size, 0);
+});
+
+test('selected screenshot is previewed and needs its own consent', async () => {
+  const app = await setup({ screenshots: [{ mime: 'image/webp', data: 'UklGRgAAAAA=' }] });
+  assert.equal(app.node('report-images').children.length, 1);
+  assert.equal(app.node('report-image-consent-row').hidden, false);
+  app.node('report-text').value = 'Synthetic screenshot';
+  app.node('report-consent').checked = true;
+  await app.submit();
+  assert.deepEqual(app.events, []);
+  app.node('report-image-consent').checked = true;
+  await app.submit();
+  assert.deepEqual(app.events, ['send']);
 });
