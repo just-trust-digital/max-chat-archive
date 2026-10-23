@@ -1,0 +1,76 @@
+[
+  {
+    "name": "popup-light",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 760,
+    "controls": 9
+  },
+  {
+    "name": "popup-dark",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 760,
+    "controls": 9
+  },
+  {
+    "name": "report-light-390",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 1326,
+    "controls": 10
+  },
+  {
+    "name": "report-light-768",
+    "viewport": 768,
+    "scrollWidth": 768,
+    "contentHeight": 1201,
+    "controls": 10
+  },
+  {
+    "name": "report-light-1280",
+    "viewport": 1280,
+    "scrollWidth": 1280,
+    "contentHeight": 1201,
+    "controls": 10
+  },
+  {
+    "name": "report-dark-crash-390",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 1345,
+    "controls": 10
+  },
+  {
+    "name": "report-light-long-390",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 1353,
+    "controls": 10
+  },
+  {
+    "name": "known-empty-light-390",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 844,
+    "controls": 3
+  },
+  {
+    "name": "known-populated-dark-390",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "contentHeight": 844,
+    "controls": 5
+  },
+  {
+    "name": "known-populated-light-768",
+    "viewport": 768,
+    "scrollWidth": 768,
+    "contentHeight": 900,
+    "controls": 5
+  },
+  {
+    "name": "report-error-390",
+    "status": "Не удалось отправить. Отчёт сохранён в браузере; попробуйте позже."
+  }
+]

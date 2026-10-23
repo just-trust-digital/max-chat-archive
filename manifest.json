@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MAX Архив",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "description": "Локальный экспорт чатов MAX с сообщениями и вложениями",
   "permissions": [
     "tabs",
@@ -14,7 +14,8 @@
     "https://fd.oneme.ru/*",
     "https://*.okcdn.ru/*",
     "https://raw.githubusercontent.com/just-trust-digital/max-chat-archive/*",
-    "https://api.github.com/repos/just-trust-digital/max-chat-archive/*"
+    "https://api.github.com/repos/just-trust-digital/max-chat-archive/*",
+    "https://pult.justtrust.digital/bugs/report/*"
   ],
   "action": {
     "default_title": "Экспорт MAX",

@@ -42,6 +42,32 @@
   const defaults = { format: 'html-json', split: 'by-chat', destination:'zip', maxFileMB:25, maxArchiveMB:250, media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
 
   function note(message, error = false) { status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
+  let pendingReportId = null;
+  let seriousReported = false;
+  function showReportPrompt(id) {
+    pendingReportId = id;
+    if ($('report-prompt')) $('report-prompt').hidden = false;
+  }
+  $('report-pending')?.addEventListener('click', () => {
+    if (pendingReportId) chrome.tabs.create({ url: chrome.runtime.getURL('report.html?draft=' + encodeURIComponent(pendingReportId)) });
+  });
+  globalThis.MaxReportStore?.list().then(items => {
+    const pending = items.filter(item => item.kind === 'crash' && item.state === 'draft').at(-1);
+    if (pending) showReportPrompt(pending.report_id);
+  }).catch(() => {});
+  async function queueUnexpected(error) {
+    if (!globalThis.MaxReportStore || stopped || seriousReported || MaxReportStore.expected.has(error?.code)) return;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!/^https:\/\/web\.max\.ru\//.test(tab?.url || '') || tab.status === 'loading') return;
+      const draft = await MaxReportStore.recordSerious(error, 'export');
+      if (draft) { seriousReported = true; showReportPrompt(draft.report_id); }
+    } catch { /* Reporting must not interrupt export. */ }
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', event => { if (running) void queueUnexpected(event.error); });
+    window.addEventListener('unhandledrejection', event => { if (running) void queueUnexpected(event.reason); });
+  }
   function stage(message, completed = null, total = null) {
     $('progress-text').textContent = message;
     stageProgress.hidden = false;
@@ -78,7 +104,11 @@
       else job.resolve(message.value?.messages ? { ...message.value, messages: job.chunks.flat() } : message.value);
     });
     port.onDisconnect.addListener(() => {
-      for (const job of pending.values()) job.reject(new Error('Связь с MAX потеряна. Не закрывайте и не обновляйте вкладку во время экспорта.'));
+      for (const job of pending.values()) {
+        const error = new Error('Связь с MAX потеряна. Не закрывайте и не обновляйте вкладку во время экспорта.');
+        error.code = 'TAB_DISCONNECTED';
+        job.reject(error);
+      }
       pending.clear(); port = null; note('Связь с вкладкой MAX потеряна.', true);
     });
   }
@@ -270,12 +300,16 @@
   async function run() {
     if (running || recoveryBusy) return;
     let reportTabId = null;
+    let runToken = null;
+    let heartbeat = null;
     try {
       const selected = selection(), settings = options();
       if (!selected.length) throw new Error('Выберите хотя бы один чат.');
       const folder=settings.destination==='folder';
       const perChat = !folder && settings.split === 'by-chat';
-      running = true; stopped = false; recoveryControls(true); start.disabled = true; cancel.hidden = false;
+      running = true; stopped = false; seriousReported = false; recoveryControls(true); start.disabled = true; cancel.hidden = false;
+      runToken = globalThis.MaxReportStore ? await MaxReportStore.beginRun().catch(() => null) : null;
+      if (runToken) heartbeat = setInterval(() => { void MaxReportStore.beatRun(runToken).catch(() => {}); }, 10000);
       const folderName=`max-archive-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}-${typeof crypto!=='undefined' && crypto.randomUUID?crypto.randomUUID().slice(0,8):Math.random().toString(36).slice(2,10)}`;
       const archiveLimit=settings.maxArchiveMB*1024*1024;
       const directory=folder?new ArchiveBudget(new DirectoryArchive((blob,name)=>saveBlob(blob,name,true),folderName),archiveLimit,false):null;
@@ -344,6 +378,7 @@
           if(directory) {ArchiveFormat.addIndex(directory,report.chats,settings.format);directory.add('report.json',JSON.stringify(report,null,2));await directory.flush();}
           rows[index].textContent = `${result.title} — ${result.messages.length} сообщений${result.complete ? ', готово' : ', история загружена частично'}`;
         } catch (error) {
+          await queueUnexpected(error);
           report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
           rows[index].textContent = `${info?.title || 'Открытый чат'} — ошибка: ${error.message}`;
           if (['MAX_HIDDEN','CHECKPOINT_WRITE','EXPORT_BUSY','DIRECTORY_WRITE','ARCHIVE_LIMIT'].includes(error.code)) stopped = true;
@@ -366,8 +401,10 @@
         note(`${directory?`Папка ${directory.name} сохранена. Откройте index.html.`:'ZIP сохранён.'} Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}.`);
         stage(stopped ? 'Экспорт остановлен' : 'Экспорт завершён');
       } else note(report.errors[0]?.error || 'Нет данных для архива.', true);
-    } catch (error) { note(error.message,true); }
+    } catch (error) { await queueUnexpected(error); note(error.message,true); }
     finally {
+      if (heartbeat) clearInterval(heartbeat);
+      if (runToken) await MaxReportStore.finishRun(runToken).catch(() => {});
       visibilityPrompt(false);
       running = false; start.disabled = false; cancel.hidden = true; stageProgress.hidden = true; recoveryControls(false); updateSelection();
       await renderRecovery();

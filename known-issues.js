@@ -11,7 +11,8 @@
     return value;
   }
   function render(data, fallback) {
-    date.textContent = `Обновлено: ${data.updated_at}${fallback ? ' · сохранённая версия' : ''}`;
+    const updated = /^\d{4}-\d\d-\d\d$/.test(data.updated_at) ? data.updated_at.split('-').reverse().join('.') : data.updated_at;
+    date.textContent = `Обновлено: ${updated}${fallback ? ' · сохранённая версия' : ''}`;
     list.replaceChildren();
     if (!data.issues.length) {
       const empty = document.createElement('p');

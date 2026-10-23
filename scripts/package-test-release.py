@@ -21,6 +21,7 @@ FILES = [
     'updates.js', 'updates.css',
     'skills/max-archive/SKILL.md', 'skills/max-archive/references/archive.md',
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',
+    'report.html', 'report.js', 'reporting.js', 'known-issues.html', 'known-issues.js', 'known-issues.json',
     'styles.css', 'content.js', 'format.js', 'checkpoint.js', 'zip.js',
     'download-bridge.js', 'timer-worker.js', 'directory.js', 'calendar.js', 'LICENSE',
     'assets/export.svg', 'assets/jtd-light.svg', 'assets/jtd-dark.svg',
@@ -59,7 +60,7 @@ def build_pdf():
     p('3. Для ZIP распакуйте скачанный файл. Для режима папки откройте новый каталог <b>max-archive-…</b> в Загрузках. Запустите <b>index.html</b> в корне и выберите чат. Сохраняйте структуру папок: в них лежат вложения.')
     p('Если что-то пошло не так', 'heading')
     p('Остановить экспорт можно кнопкой <b>Остановить</b> на странице расширения. После сбоя откройте вкладку <b>История экспорта</b> → <b>Скачать сохранённое</b>. Это сохранённая часть, а не продолжение экспорта.', 'note')
-    p('Для проверки ошибки пришлите разработчику <b>скриншот результата и report.json</b> из экспорта; если скачался max-archive-summary.json, приложите и его. В отчётах могут быть названия чатов и адреса вложений. Саму переписку и папку media присылать не нужно.', 'note')
+    p('Внизу меню расширения нажмите <b>Сообщить о проблеме</b> или <b>Предложить улучшение</b>. Перед отправкой проверьте текст и подтвердите согласие. Не прикладывайте переписку, файлы и report.json: в нём могут быть названия чатов и адреса вложений.', 'note')
     p('Доступны только данные, которые показывает веб-версия MAX. Некоторые вложения могут быть пропущены. «Чтение истории» у сохранённой копии означает последний записанный этап, а не успешное завершение.', 'note')
 
     def footer(canvas, doc):
@@ -67,7 +68,7 @@ def build_pdf():
         canvas.line(40, 34, A4[0]-40, 34)
         canvas.setFont('Guide', 8)
         canvas.setFillColor(colors.HexColor('#526178'))
-        canvas.drawString(40, 22, f'MAX Архив {VERSION} | 22.10.2026')
+        canvas.drawString(40, 22, f'MAX Архив {VERSION} | 23.10.2026')
         canvas.drawRightString(A4[0]-40, 22, '1 / 1')
 
     SimpleDocTemplate(str(PDF), pagesize=A4, rightMargin=40, leftMargin=40,
