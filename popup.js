@@ -2,9 +2,7 @@ const state = document.getElementById('site-state');
 const quick = document.getElementById('quick');
 const advanced = document.getElementById('advanced');
 const openReport = path => chrome.tabs.create({ url: chrome.runtime.getURL(path) });
-document.getElementById('report-open').addEventListener('click', () => openReport('report.html?kind=problem'));
-document.getElementById('idea-open').addEventListener('click', () => openReport('report.html?kind=idea'));
-document.getElementById('known-open').addEventListener('click', () => openReport('known-issues.html'));
+document.getElementById('contact-open').addEventListener('click', event => { event.preventDefault(); openReport('report.html'); });
 MaxReportStore.recoverInterrupted().then(() => MaxReportStore.list()).then(items => {
   const pending = items.filter(item => item.kind === 'crash' && item.state === 'draft').at(-1);
   if (!pending) return;

@@ -66,7 +66,7 @@ const MaxUpdates = (() => {
           status.textContent = 'Доступно обновление MAX Архив.';
         } else {
           button.textContent = 'Проверить обновления';
-          status.textContent = `Установлена версия ${chrome.runtime.getManifest().version}. Новее пока нет.`;
+          status.textContent = 'У вас установлена актуальная версия, обновление не требуется.';
         }
       } catch {
         release = null;

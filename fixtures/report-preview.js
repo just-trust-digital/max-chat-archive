@@ -23,7 +23,10 @@
   };
   const originalFetch = window.fetch.bind(window);
   window.fetch = (url, options) => {
-    if (String(url).startsWith('https://pult.justtrust.digital/bugs/report/')) return Promise.reject(new Error('Synthetic offline preview'));
+    if (String(url).startsWith('https://pult.justtrust.digital/bugs/report/')) {
+      if (params.get('fixture') === 'success') return Promise.resolve(new Response(JSON.stringify({ product: 'maxexport', report_id: JSON.parse(options.body).report_id }), {status:200,headers:{'Content-Type':'application/json'}}));
+      return Promise.reject(new Error('Synthetic offline preview'));
+    }
     if (String(url).startsWith('https://raw.githubusercontent.com/')) return Promise.reject(new Error('Synthetic offline preview'));
     if (String(url).endsWith('known-issues.json') && params.get('fixture') === 'known-populated') {
       return Promise.resolve(new Response(JSON.stringify({ updated_at: '2026-10-23', issues: [

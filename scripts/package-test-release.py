@@ -18,6 +18,8 @@ VERSION = json.loads((ROOT / 'manifest.json').read_text(encoding='utf-8'))['vers
 OUT = ROOT / 'output'
 PDF = OUT / 'pdf' / 'max-archive-quick-start.pdf'
 FILES = [
+    'assets/fonts/Inter-Variable.ttf', 'assets/fonts/OFL-Inter.txt',
+    'assets/LICENSE-octicons.txt',
     'updates.js', 'updates.css',
     'skills/max-archive/SKILL.md', 'skills/max-archive/references/archive.md',
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',

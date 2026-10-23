@@ -11,6 +11,8 @@ for (const route of ['/popup.js','/fixtures/popup-preview.js','/directory.js','/
 for(const name of ['export.svg','jtd-light.svg','jtd-dark.svg','icon-16.png','icon-32.png','icon-48.png','icon-128.png']) routes.add('/assets/'+name);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.css':'text/css; charset=utf-8' };
 for (const route of ['/updates.js','/updates.css','/fixtures/updates-preview.js']) routes.add(route);
+routes.add('/assets/fonts/Inter-Variable.ttf');
+types['.ttf'] = 'font/ttf';
 for (const route of ['/report.html','/report.js','/reporting.js','/known-issues.html','/known-issues.js','/known-issues.json','/fixtures/report-preview.js']) routes.add(route);
 const updatePreview = html => html.replace('<script src="updates.js">', '<script src="/fixtures/updates-preview.js"></script><script src="updates.js">');
 const previewMedia = { '/test/media/photo.svg': 'fixtures/photo.svg', '/test/media/sample.webm': 'fixtures/sample.webm', '/test/media/sample.wav': 'fixtures/sample.wav', '/test/media/document.txt': 'fixtures/document.txt' };

@@ -62,7 +62,7 @@
   }
   async function update(id, values) {
     const report = await get(id);
-    if (!report) throw new Error('Отчёт не найден в этом браузере.');
+    if (!report) throw new Error('Обращение не найдено.');
     if (report.attempts) throw new Error('Отчёт уже отправлялся. Для нового текста создайте новый отчёт.');
     report.text = String(values.text || '').trim().slice(0, 1500);
     report.contact = String(values.contact || '').trim().slice(0, 120);
@@ -89,10 +89,10 @@
   }
   async function send(id) {
     const report = await get(id);
-    if (!report) throw new Error('Отчёт не найден в этом браузере.');
+    if (!report) throw new Error('Обращение не найдено.');
     if (report.state === 'sent') return report;
-    if (report.attempts >= MAX_ATTEMPTS) throw new Error('Лимит попыток достигнут. Отчёт сохранён в браузере.');
-    if (report.next_attempt_at && now() < Date.parse(report.next_attempt_at)) throw new Error('Повторите отправку немного позже. Отчёт сохранён в браузере.');
+    if (report.attempts >= MAX_ATTEMPTS) throw new Error('Не удалось отправить после нескольких попыток. Создайте новое обращение.');
+    if (report.next_attempt_at && now() < Date.parse(report.next_attempt_at)) throw new Error('Повторите отправку немного позже.');
     if (!report.text.trim()) throw new Error('Опишите проблему или предложение.');
     report.attempts += 1;
     report.state = 'queued';
@@ -125,7 +125,7 @@
       report.state = terminal ? 'failed' : 'queued';
       report.next_attempt_at = terminal ? null : new Date(now() + retrySeconds * 1000).toISOString();
       await put(report);
-      throw new Error(terminal ? 'Отчёт отклонён. Проверьте текст и создайте новый отчёт.' : 'Не удалось отправить. Отчёт сохранён в браузере; попробуйте позже.');
+      throw new Error(terminal ? 'Отчёт отклонён. Проверьте текст и создайте новый отчёт.' : 'Не удалось отправить; попробуйте позже.');
     } finally { clearTimeout(timeout); }
   }
   async function beginRun() {
