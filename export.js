@@ -184,13 +184,12 @@
   function renderChats() {
     list.replaceChildren();
     if (!chats.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'Чаты пока не найдены'; list.append(empty); }
-    chats.forEach((chat, index) => {
+    chats.forEach(chat => {
       const label = document.createElement('label'); label.className = 'chat-row';
       const input = document.createElement('input'); input.type = 'checkbox'; input.value = chat.key; input.checked = true;
       input.addEventListener('change', updateSelection);
       const title = document.createElement('span'); title.textContent = chat.title;
-      const number = document.createElement('small'); number.textContent = String(index + 1);
-      label.append(input, title, number); list.append(label);
+      label.append(input, title); list.append(label);
     });
     updateSelection();
   }
