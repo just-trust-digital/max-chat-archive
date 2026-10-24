@@ -1,7 +1,7 @@
 {
   "name": "max-archive-extension",
   "private": true,
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "Local MAX web chat archive extension",
   "scripts": { "test": "node --test", "test:browser": "node scripts/fixture-server.js" },
   "license": "MIT"

@@ -197,7 +197,7 @@
   async function refresh() {
     if (running) return;
     $('refresh').disabled = true;
-    note('Ищем чаты в текущей папке MAX…');
+    note('Ищем чаты MAX…');
     try { const result = await call('discover'); chats = result.chats; discoveryComplete = result.complete; renderChats(); note(`Найдено чатов: ${chats.length}.${discoveryComplete ? '' : ' Список загружен не полностью.'}`); }
     catch (error) { note(error.message, true); }
     finally { $('refresh').disabled = false; }
