@@ -104,7 +104,7 @@ npm run test:browser
 
 ## Разработка и лицензия
 
-Сборка расширения не требуется. Автоматические тесты запускаются командой `npm test` на Node.js. [Проверки, локальные макеты и сборка пакета](docs/development.md) · [Исследование существующих решений](docs/research-existing.md).
+Сборка расширения не требуется. На Node.js команды `npm test` и `npm run check` запускают тесты, проверку синтаксиса JavaScript и совпадения версий. GitHub Actions выполняет проверки и создаёт установочный ZIP; новый тег версии готовит черновик Release для ручной проверки и публикации. [Проверки, локальные макеты и сборка пакета](docs/development.md) · [Исследование существующих решений](docs/research-existing.md).
 
 [MIT](LICENSE) · [Just Trust Digital](https://justtrust.digital)
 
