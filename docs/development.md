@@ -32,7 +32,7 @@ npm run check
 Для этого checkout проверен запуск:
 
 ```powershell
-Set-Location D:\DEV\MaxExport
+# Выполните из корня репозитория
 npm run test:browser
 ```
 
@@ -64,13 +64,6 @@ python -m pip install -r scripts/requirements-release.txt
 python scripts/package-test-release.py
 ```
 
-На компьютере владельца проверена готовая среда Codex:
-
-```powershell
-Set-Location D:\DEV\MaxExport
-& "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts/package-test-release.py
-```
-
 Результаты:
 
 - `output/max-archive-<версия>-test.zip`: устанавливаемая папка `MaxExport` и `START-HERE.pdf`.
@@ -88,7 +81,7 @@ Set-Location D:\DEV\MaxExport
 Для следующего выпуска обновите обе версии и подготовьте `docs/releases/v<версия>.md` с проверенными изменениями для пользователя, порядком обновления и известными ограничениями. После коммита отправьте тег, например (подставьте новую версию; существующие теги не перемещать):
 
 ```powershell
-Set-Location D:\DEV\MaxExport
+# Выполните из корня репозитория
 $version = (Get-Content -Raw -Encoding UTF8 manifest.json | ConvertFrom-Json).version
 git tag -a "v$version" -m "MAX Архив $version"
 git push origin "v$version"
@@ -109,7 +102,7 @@ git push origin "v$version"
 Если 8767 занят, проверенный запуск на 8768:
 
 ```powershell
-Set-Location D:\DEV\MaxExport
+# Выполните из корня репозитория
 $env:MAX_ARCHIVE_FIXTURE_PORT='8768'
 npm run test:browser
 ```

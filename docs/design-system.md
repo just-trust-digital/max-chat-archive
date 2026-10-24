@@ -21,7 +21,7 @@
 Проверенный запуск просмотра:
 
 ```powershell
-Set-Location D:\DEV\MaxExport
+# Выполните из корня репозитория
 npm run test:browser
 ```
 
