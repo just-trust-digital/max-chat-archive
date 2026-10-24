@@ -4,5 +4,5 @@
   "version": "0.3.18",
   "description": "Local MAX web chat archive extension",
   "scripts": { "check": "node scripts/check-project.js", "test": "node --test", "test:browser": "node scripts/fixture-server.js" },
-  "license": "MIT"
+  "license": "SEE LICENSE IN LICENSE"
 }

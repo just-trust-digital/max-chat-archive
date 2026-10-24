@@ -1,16 +1,29 @@
-MIT License
+MaxExport No-Sale License 1.0
 
 Copyright (c) 2026 Just Trust Digital
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Permission is granted, free of charge, to use, copy, study, modify, and
+distribute this software and its documentation (the "Software"), including
+modified versions, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. This copyright notice and the complete license must accompany all copies
+   or substantial portions of the Software, including modified versions.
+2. Without prior written permission from Just Trust Digital, you may not sell,
+   license for a fee, rent, or otherwise charge for copies of the Software or
+   modified versions, including charging for access to the Software. You may
+   not grant recipients permission to sell the Software under this license.
+3. Personal use and internal use within a business are allowed. Charging for
+   independent support or consulting is allowed only if obtaining or using
+   the Software is not conditional on buying those services.
+4. Third-party components remain under their own licenses. In particular,
+   Inter is covered by assets/fonts/OFL-Inter.txt and Octicons by
+   assets/LICENSE-octicons.txt. This license does not restrict rights granted
+   separately by those licenses.
+
+These terms apply to the JTD-owned material distributed with this license.
+They do not revoke or restrict permissions for copies previously distributed
+under the MIT License. Earlier MIT releases remain usable under that license.
+This is a source-available license, not an OSI-approved open source license.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
