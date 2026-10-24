@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAX Архив — тестовая версия 0.3.17</title>
+  <link rel="stylesheet" href="carousel.css">
+</head>
+<body>
+  <main class="slide slide-one" aria-label="Слайд 1: выбор переписки для экспорта">
+    <div class="brand"><img src="../../../assets/export.svg" alt=""><span>MAX Архив</span><span class="version">0.3.17 · тестовая версия</span></div>
+    <h1>Переписка MAX<br><em>в архиве на компьютере</em></h1>
+    <p class="lead">Выберите один чат, несколько или все найденные<br>в текущей папке MAX.</p>
+    <div class="settings-shot"><img src="../../ui-0315/settings-768-light-current.png" alt="Настройки экспорта в расширении MAX Архив"></div>
+    <div class="export-pill"><span class="export-icon">↓</span><span><strong>Скачать ZIP</strong><small>Сообщения и выбранные вложения</small></span></div>
+    <div class="slide-footer"><span>Для Chrome и Edge</span><span>1 / 2&nbsp; →</span></div>
+  </main>
+  <main class="slide slide-two" aria-label="Слайд 2: результат экспорта">
+    <div class="brand"><img src="../../../assets/export.svg" alt=""><span>MAX Архив</span><span class="version">0.3.17 · тестовая версия</span></div>
+    <h1>Откройте сохранённую<br><em>переписку и вложения</em></h1>
+    <p class="lead">Читаемый HTML остаётся на вашем компьютере.</p>
+    <div class="archive-window"><div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span>messages.html</span><span class="window-lock">⌄</span></div><iframe src="sample-archive.html" title="Пример сохранённой переписки"></iframe></div>
+    <div class="formats"><span>HTML</span><span>JSON</span><span>CSV</span><span>TXT</span><b>ZIP или папка</b></div>
+    <div class="slide-footer"><span>Пример с вымышленной перепиской</span><span>2 / 2</span></div>
+  </main>
+  <script>document.documentElement.dataset.slide = new URLSearchParams(location.search).get('slide') === '2' ? '2' : '1';</script>
+</body>
+</html>

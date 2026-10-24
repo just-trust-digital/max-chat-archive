@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="650" height="90" viewBox="0 0 650 90">
+  <rect width="650" height="90" rx="16" fill="#e9e8ff"/>
+  <path d="M66 64C151 34 204 75 289 55S430 33 568 64" fill="none" stroke="#5840eb" stroke-width="8" stroke-linecap="round" stroke-dasharray="3 18"/>
+  <circle cx="70" cy="63" r="13" fill="#5840eb"/><circle cx="568" cy="63" r="13" fill="#5840eb"/>
+  <circle cx="70" cy="63" r="5" fill="white"/><circle cx="568" cy="63" r="5" fill="white"/>
+  <text x="66" y="25" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#241c60">Маршрут встречи</text>
+</svg>
