@@ -94,9 +94,26 @@ async function main() {
       return {before, after: {chats: (await CheckpointStore.list()).length, files: (await CheckpointStore.files(id)).length}};
     });
     assert.deepEqual(checkpoint, {before: {chats: 1, files: 1}, after: {chats: 0, files: 0}});
+    const html = await ext.evaluate(() => {
+      const attack = '<img src=x onerror="globalThis.auditExecuted=true"><script>globalThis.auditExecuted=true</script>';
+      let html;
+      ArchiveFormat.add({add(name, value) {if (name.endsWith('/messages.html')) html = value;}}, 'chat', {
+        title: attack, participants: [{name: attack, role: attack}],
+        messages: [{text: attack, author: attack, direction: 'in', time: '', reactions: [attack],
+          attachments: [{name: attack, url: 'javascript:globalThis.auditExecuted=true', localPath: '../private'}]}]
+      }, 'html');
+      return html;
+    });
+    const archivePage = await context.newPage();
+    const requestsBeforeArchive = requests.length;
+    await archivePage.setContent(html);
+    assert.equal(await archivePage.locator('script,img,iframe').count(), 0);
+    assert.equal(await archivePage.evaluate(() => globalThis.auditExecuted === true), false);
+    assert.equal(requests.length, requestsBeforeArchive, 'opening hostile archive triggered a network request');
     const report = {browser: context.browser().version(), manifestVersion: tabs.manifest.version,
       storageDeniedToContent: true, trustedStorageReadable: true, tabsPermissionRemoved: true,
-      tabLookupAndActivation: true, incognito: tabs.manifest.incognito, media, checkpoint, requests};
+      tabLookupAndActivation: true, incognito: tabs.manifest.incognito, media, checkpoint,
+      hostileArchive: {scriptsExecuted: false, networkRequests: 0}, requests};
     fs.writeFileSync(path.join(out, 'browser-after.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify({...report, requests: report.requests.filter(r => r.url.startsWith('https:'))}, null, 2));
   } finally {
