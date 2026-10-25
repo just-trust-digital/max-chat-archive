@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const http = require('node:http');
 
 function loadExporter(fetch, timers = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'export.js'), 'utf8');
@@ -83,6 +84,43 @@ test('other okcdn hosts stay outside the media allowlist', async () => {
   const report = { skippedMedia: [] };
   await exporter.downloadMedia({ add() {} }, { messages: [{ attachments: [attachment] }] }, '001-chat', report, 0, () => {});
   assert.equal(fetched, false);
+  assert.equal(report.skippedMedia.length, 1);
+});
+
+test('media rejects forged domains, alternate ports and URL credentials before requesting', async () => {
+  let requests = 0;
+  const exporter = loadExporter(async () => { requests++; throw Error('unexpected fetch'); });
+  const urls = ['https://st.max.ru.evil.invalid/a', 'https://st.max.ru@evil.invalid/a',
+    'https://st.max.ru:8443/a', 'https://user:pass@st.max.ru/a', 'http://st.max.ru/a',
+    'file:///private', 'javascript:alert(1)', 'data:text/html,test', 'blob:https://web.max.ru/fake'];
+  const report = {skippedMedia: []};
+  await exporter.downloadMedia({add() {assert.fail('no file may be saved');}},
+    {messages: [{attachments: urls.map(url => ({url, downloadable: true}))}]}, 'chat', report, 0, () => {});
+  assert.equal(requests, 0);
+  assert.equal(report.skippedMedia.length, urls.length);
+});
+
+test('real HTTP redirect never requests its destination or stores a foreign response', async t => {
+  let destinationRequests = 0;
+  const server = http.createServer((request, response) => {
+    if (request.url === '/redirect') {
+      response.writeHead(302, {location: '/foreign'}); response.end();
+    } else { destinationRequests++; response.end('must not be fetched'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => {server.close(resolve); server.closeAllConnections();}));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const exporter = loadExporter(async (url, options) => {
+    assert.equal(url, 'https://st.max.ru/redirect');
+    assert.equal(options.referrerPolicy, 'no-referrer');
+    return fetch(origin + '/redirect', options);
+  });
+  const report = {skippedMedia: []};
+  const result = await exporter.downloadMedia({add() {assert.fail('foreign file saved');}},
+    {messages: [{attachments: [{url: 'https://st.max.ru/redirect', downloadable: true}]}]},
+    'chat', report, 0, () => {});
+  assert.equal(destinationRequests, 0);
+  assert.equal(result, 0);
   assert.equal(report.skippedMedia.length, 1);
 });
 

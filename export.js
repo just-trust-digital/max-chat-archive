@@ -240,12 +240,13 @@
         const url = new URL(attachment.inlineData || attachment.url);
         const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
         const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=Math.ceil(fileLimit*4/3)+1024;
-        if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost)) throw new Error('Адрес вне разрешённых доменов медиа');
+        if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost || url.port || url.username || url.password)) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= byteLimit) throw new Error('Лимит архива');
         const controller = new AbortController(); currentAbort = controller;
         const video = attachment.kind === 'video' || attachment.mimeType?.startsWith('video/') || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
         timer = setTimeout(() => controller.abort(), video ? 120000 : 30000);
-        const response = await fetch(url.href, { credentials: 'include', signal: controller.signal });
+        // Validate before any request; automatic redirects could leave the media allowlist.
+        const response = await fetch(url.href, { credentials: 'include', redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const size = Number(response.headers.get('content-length'));
         if (size > fileLimit) throw new Error(`Файл больше ${fileLimit/1024/1024} МБ`);
