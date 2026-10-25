@@ -20,7 +20,7 @@ if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${manifest.version}
 }
 
 // Only versioned project sources: never inspect local browser profiles or exports.
-const files = execFileSync('git', ['ls-files', '-z', '--', '*.js'], {
+const files = execFileSync('git', ['ls-files', '-z', '--', '*.js', '*.cjs', '*.mjs'], {
   cwd: root, encoding: 'utf8',
 }).split('\0').filter(Boolean);
 if (!files.length) throw new Error('No tracked JavaScript files found');
