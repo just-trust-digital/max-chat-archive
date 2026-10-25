@@ -1,5 +1,9 @@
 // Content-page timers can be throttled while the MAX tab is in the background.
 // Keep short export pacing delays in the extension service worker instead.
+// Contact details and report screenshots belong to extension pages, not MAX content scripts.
+chrome.storage.local.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'}).catch(() => {
+  console.error('MAX Archive: could not restrict local storage access.');
+});
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   if (message?.type === 'max-archive-show') {

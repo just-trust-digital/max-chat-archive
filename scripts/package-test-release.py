@@ -25,7 +25,7 @@ FILES = [
     'manifest.json', 'popup.html', 'popup.js', 'export.html', 'export.js',
     'report.html', 'report.js', 'reporting.js', 'known-issues.html', 'known-issues.js', 'known-issues.json',
     'styles.css', 'content.js', 'format.js', 'checkpoint.js', 'zip.js',
-    'download-bridge.js', 'timer-worker.js', 'directory.js', 'calendar.js', 'LICENSE',
+    'download-bridge.js', 'timer-worker.js', 'directory.js', 'calendar.js', 'LICENSE', 'PRIVACY.md',
     'assets/export.svg', 'assets/jtd-light.svg', 'assets/jtd-dark.svg',
     'assets/icon-16.png', 'assets/icon-32.png', 'assets/icon-48.png', 'assets/icon-128.png',
 ]

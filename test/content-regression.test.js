@@ -262,7 +262,7 @@ test('history continues when page timers are suspended but extension worker is r
   const document = { title: 'MAX', querySelector: selector => selector === '.openedChat' ? root : null, querySelectorAll: () => rows.slice(60-mounted) };
   let workerReceive;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'timer-worker.js'), 'utf8'), {
-    chrome: {runtime: {id: 'self', onMessage: {addListener(fn) {workerReceive = fn;}}}},
+    chrome: {storage: {local: {setAccessLevel: async () => {}}}, runtime: {id: 'self', onMessage: {addListener(fn) {workerReceive = fn;}}}},
     setTimeout(fn) {workerWaits++; queueMicrotask(fn);}
   });
   const runtime = { onConnect: {addListener() {}}, sendMessage: message => new Promise(resolve => workerReceive(message, {id: 'self'}, resolve)) };
@@ -280,7 +280,7 @@ test('hidden MAX must become visible before its history loading edge is crossed'
   const document={title:'MAX',visibilityState:'hidden',querySelector:selector=>selector==='.openedChat'?root:null,querySelectorAll:()=>rows.slice(60-mounted)};
   let receive;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','timer-worker.js'),'utf8'),{
-    chrome:{runtime:{id:'self',onMessage:{addListener(fn){receive=fn;}}},tabs:{async update(id){assert.equal(id,7);activations++;document.visibilityState='visible';}},windows:{async update(){}}},
+    chrome:{storage:{local:{setAccessLevel:async()=>{}}},runtime:{id:'self',onMessage:{addListener(fn){receive=fn;}}},tabs:{async update(id){assert.equal(id,7);activations++;document.visibilityState='visible';}},windows:{async update(){}}},
     setTimeout:fn=>queueMicrotask(fn)
   });
   const runtime={onConnect:{addListener(){}},sendMessage:message=>new Promise(resolve=>receive(message,{id:'self',tab:{id:7,windowId:2}},resolve))};
