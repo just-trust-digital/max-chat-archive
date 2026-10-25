@@ -70,7 +70,7 @@ def build_pdf():
         canvas.line(40, 34, A4[0]-40, 34)
         canvas.setFont('Guide', 8)
         canvas.setFillColor(colors.HexColor('#526178'))
-        canvas.drawString(40, 22, f'MAX Архив {VERSION} | 24.10.2026')
+        canvas.drawString(40, 22, f'MAX Архив {VERSION}')
         canvas.drawRightString(A4[0]-40, 22, '1 / 1')
 
     SimpleDocTemplate(str(PDF), pagesize=A4, rightMargin=40, leftMargin=40,

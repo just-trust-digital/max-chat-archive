@@ -2,9 +2,9 @@
 
 Расширение для сохранения переписки из [веб-версии MAX](https://web.max.ru/) на компьютер.
 
-Проект [Just Trust Digital](https://justtrust.digital). Тестовая версия **0.3.20**. Неофициальное расширение, не связано с разработчиками MAX.
+Проект [Just Trust Digital](https://justtrust.digital). Готовится тестовая версия **0.3.21**. Неофициальное расширение, не связано с разработчиками MAX.
 
-[Скачать расширение](https://github.com/just-trust-digital/max-chat-archive/releases/tag/v0.3.20) · [Сообщить о проблеме](#сообщить-о-проблеме) · [Известные проблемы](KNOWN_ISSUES.md)
+[Скачать опубликованную версию 0.3.20](https://github.com/just-trust-digital/max-chat-archive/releases/tag/v0.3.20) · [Изменения 0.3.21](docs/releases/v0.3.21.md) · [Сообщить о проблеме](#сообщить-о-проблеме) · [Известные проблемы](KNOWN_ISSUES.md)
 
 ## Возможности
 
