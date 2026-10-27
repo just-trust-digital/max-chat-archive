@@ -223,9 +223,31 @@
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     return bytes;
   }
+  const jpegOptions = { type:'image/jpeg', quality:0.92, background:'#ffffff', frame:'first' };
+  async function webpToJpeg(bytes) {
+    let bitmap;
+    const work=(async()=>{
+      bitmap=await createImageBitmap(new Blob([bytes],{type:'image/webp'}),{imageOrientation:'from-image'});
+      try {
+        if(!bitmap.width || !bitmap.height || bitmap.width*bitmap.height>40000000) throw new Error('Изображение больше 40 мегапикселей');
+        const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
+        const context=canvas.getContext('2d',{alpha:false});
+        if(!context) throw new Error('Недоступен обработчик изображений');
+        context.fillStyle=jpegOptions.background;context.fillRect(0,0,canvas.width,canvas.height);
+        context.drawImage(bitmap,0,0);
+        const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Не удалось создать JPG')),jpegOptions.type,jpegOptions.quality));
+        const output=new Uint8Array(await blob.arrayBuffer());
+        if(blob.type!==jpegOptions.type || output[0]!==255 || output[1]!==216 || output[2]!==255) throw new Error('Браузер не создал JPEG');
+        return {bytes:output,conversion:{...jpegOptions,width:canvas.width,height:canvas.height}};
+      } finally {bitmap.close();}
+    })();
+    let timer;
+    try {return await Promise.race([work,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Превышено время преобразования JPG')),15000);})]);}
+    finally {clearTimeout(timer);}
+  }
   async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024, fileLimit = 25 * 1024 * 1024) {
     let total = initialBytes;
-    const used = new Map();
+    const used = new Map(), imageDetails = new Map();
     const media=chat.messages.flatMap(message=>message.attachments);
     const candidates=media.filter(attachment=>attachment.downloadable && attachment.url);
     const posters=candidates.filter(attachment=>attachment.posterUrl).map(attachment=>({kind:'photo',name:'Обложка видео',url:attachment.posterUrl,downloadable:true}));
@@ -250,7 +272,7 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const size = Number(response.headers.get('content-length'));
         if (size > fileLimit) throw new Error(`Файл больше ${fileLimit/1024/1024} МБ`);
-        const bytes = await readLimited(response, controller, Math.min(fileLimit,byteLimit-total,zip.remaining ?? Infinity));
+        let bytes = await readLimited(response, controller, Math.min(fileLimit,byteLimit-total,zip.remaining ?? Infinity));
         attachment.mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (bytes.length > fileLimit || total + bytes.length > byteLimit) throw new Error('Превышен лимит размера');
         let name = ArchiveFormat.safeName(attachment.name || decodeURIComponent(url.pathname.split('/').pop()) || attachment.kind);
@@ -259,19 +281,38 @@
           const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/opus': '.opus', 'audio/webm': '.webm', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'application/pdf': '.pdf' }[type.split(';')[0].trim().toLowerCase()] || '';
           name += ext;
         }
-        const localPath = `media/${String(used.size + 1).padStart(4, '0')}-${name}`;
+        const prefix=String(used.size+1).padStart(4,'0');
+        let localPath=`media/${prefix}-${name}`, originalBytes=null, details={};
+        if(attachment.mimeType==='image/webp') {
+          try {
+            const converted=await webpToJpeg(bytes);
+            // Retain the exact source; the JPEG is a viewing/interchange derivative.
+            if(converted.bytes.length>fileLimit || total+bytes.length+converted.bytes.length>byteLimit || bytes.length+converted.bytes.length>(zip.remaining ?? Infinity)) throw new Error('JPG и оригинал превышают лимит размера');
+            originalBytes=bytes;bytes=converted.bytes;
+            const jpgName=name.replace(/\.[A-Za-z0-9]{1,6}$/,'')+'.jpg';
+            localPath=`media/${prefix}-${jpgName}`;
+            details={sourceMimeType:'image/webp',originalLocalPath:`media/originals/${prefix}-${name}`,imageConversion:converted.conversion};
+          } catch(error) {
+            details={imageConversionError:`Не удалось преобразовать WebP в JPG: ${error.message}`};
+            (report.conversionErrors ??=[]).push({url:attachment.url,localPath,reason:details.imageConversionError,originalPreserved:true});
+          }
+        }
+        const mimeType=originalBytes?'image/jpeg':attachment.mimeType;
         if(durable && checkpointId) {
-          try {await durable.file(checkpointId,attachment.url,{localPath,bytes,mimeType:attachment.mimeType});}
+          try {await durable.file(checkpointId,attachment.url,{localPath,bytes,mimeType,...details,...(originalBytes?{originalBytes}:{})});}
           catch(error) {error.code='CHECKPOINT_WRITE';throw error;}
         }
+        if(originalBytes) await zip.add(`${path}/${details.originalLocalPath}`,originalBytes);
         await zip.add(`${path}/${localPath}`, bytes);
         used.set(attachment.url, localPath);
-        total += bytes.length;
+        imageDetails.set(attachment.url,{mimeType,...details});
+        total += bytes.length+(originalBytes?.length || 0);
+        if(originalBytes) (report.convertedImages ??=[]).push({localPath,...details});
       } catch (error) { if(error.code==='DIRECTORY_WRITE') throw error;if(error.code==='CHECKPOINT_WRITE') {error.message=`Не удалось сохранить копию файла: ${error.message}`;throw error;} report.skippedMedia.push({ url: attachment.url, reason: error.name === 'AbortError' ? 'Превышено время загрузки' : error.message }); }
       finally { clearTimeout(timer); currentAbort = null; completed++; onProgress(completed, entries.length); }
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
-      if (used.has(attachment.url)) {attachment.localPath = used.get(attachment.url);delete attachment.inlineData;}
+      if (used.has(attachment.url)) {attachment.localPath = used.get(attachment.url);Object.assign(attachment,imageDetails.get(attachment.url));delete attachment.inlineData;}
       if (attachment.posterUrl && used.has(attachment.posterUrl)) attachment.posterPath=used.get(attachment.posterUrl);
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
@@ -355,7 +396,7 @@
           await saveCopy(result,'media');
           const path = filename(index, result);
           const zip = perChat ? new ArchiveBudget(new ZipArchive(),archiveLimit) : combinedZip;
-          const skippedBefore = report.skippedMedia.length;
+          const skippedBefore = report.skippedMedia.length, convertedBefore=report.convertedImages?.length || 0, conversionErrorsBefore=report.conversionErrors?.length || 0;
           let chatMediaBytes = 0;
           if (settings.media && settings.downloadMedia && !stopped) {
             rows[index].textContent = `${result.title} — загрузка вложений`;
@@ -371,7 +412,7 @@
           const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, participants:result.participants?.length || 0,participantsStatus:result.participantsStatus || 'unavailable', history: result.history };
           if (perChat) {
             ArchiveFormat.addIndex(zip,[summary],settings.format);
-            zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), mediaBytes: chatMediaBytes }, null, 2));
+            zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), convertedImages:(report.convertedImages || []).slice(convertedBefore), conversionErrors:(report.conversionErrors || []).slice(conversionErrorsBefore), mediaBytes: chatMediaBytes }, null, 2));
             await saveZip(zip, `max-archive-${path}.zip`);
           }
           report.chats.push(summary);
@@ -398,7 +439,7 @@
           combinedZip.add('report.json', JSON.stringify(report, null, 2));
           await saveZip(combinedZip, `max-archive-${new Date().toISOString().slice(0, 10)}.zip`);
         }
-        note(`${directory?`Папка ${directory.name} сохранена. Откройте index.html.`:'ZIP сохранён.'} Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}.`);
+        note(`${directory?`Папка ${directory.name} сохранена. Откройте index.html.`:'ZIP сохранён.'} Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}; ошибок JPG: ${report.conversionErrors?.length || 0}.`);
         stage(stopped ? 'Экспорт остановлен' : 'Экспорт завершён');
       } else note(report.errors[0]?.error || 'Нет данных для архива.', true);
     } catch (error) { await queueUnexpected(error); note(error.message,true); }
@@ -441,7 +482,7 @@
           }
         }
         const file=byUrl.get(attachment.url);
-        if(file) {attachment.localPath=file.localPath;attachment.mimeType=file.mimeType;delete attachment.inlineData;}
+        if(file) {attachment.localPath=file.localPath;attachment.mimeType=file.mimeType;for(const key of ['sourceMimeType','originalLocalPath','imageConversion','imageConversionError']) if(file[key]!==undefined) attachment[key]=file[key];delete attachment.inlineData;}
         if(attachment.posterUrl && byUrl.has(attachment.posterUrl)) attachment.posterPath=byUrl.get(attachment.posterUrl).localPath;
       }
       const referenced=new Set(chat.messages.flatMap(message=>message.attachments).flatMap(item=>[item.url,item.posterUrl].filter(Boolean)));
@@ -451,12 +492,13 @@
         await new Promise(resolve=>setTimeout(resolve,0));
         const bytes=file.bytes instanceof Uint8Array?file.bytes : file.bytes?.arrayBuffer?new Uint8Array(await file.bytes.arrayBuffer()):ArrayBuffer.isView(file.bytes)?new Uint8Array(file.bytes.buffer,file.bytes.byteOffset,file.bytes.byteLength):file.bytes instanceof ArrayBuffer?new Uint8Array(file.bytes):Array.isArray(file.bytes)?new Uint8Array(file.bytes):null;
         if(!bytes) throw new Error('В сохранённой копии повреждены данные вложения. Сообщения остаются в хранилище.');
+        if(file.originalBytes) zip.add(`${saved.path}/${file.originalLocalPath}`,file.originalBytes);
         zip.add(`${saved.path}/${file.localPath}`,bytes);
       }
       ArchiveFormat.add(zip,saved.path,chat,saved.settings.format);
       ArchiveFormat.addIndex(zip,[{title:chat.title,path:saved.path,messages:chat.messages.length,complete:chat.complete}],saved.settings.format);
       const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath && item.kind!=='file-or-link');
-      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],missingFiles:missing.length},null,2));
+      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],missingFiles:missing.length,convertedImages:files.filter(file=>referenced.has(file.url) && file.imageConversion).map(file=>({localPath:file.localPath,originalLocalPath:file.originalLocalPath,sourceMimeType:file.sourceMimeType,imageConversion:file.imageConversion})),conversionErrors:files.filter(file=>referenced.has(file.url) && file.imageConversionError).map(file=>({localPath:file.localPath,reason:file.imageConversionError,originalPreserved:true}))},null,2));
       show('Скачивание восстановленного ZIP…');
       await saveZip(zip,`max-recovered-${saved.path}.zip`);
       show(`Копия скачана. Сообщений: ${chat.messages.length}; файлов без локальной копии: ${missing.length}.`);
