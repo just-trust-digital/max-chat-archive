@@ -656,6 +656,7 @@
         if (message.type === 'discover') port.postMessage({ type: 'result', id: message.id, value: await discover() });
         if (message.type === 'current') port.postMessage({ type: 'result', id: message.id, value: { title: openedTitle() } });
         if (message.type === 'export') {
+          globalThis.window?.postMessage({marker:'max-archive-download-capture',type:'export-start'},globalThis.location?.origin);
           const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
           await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
@@ -670,7 +671,7 @@
           port.postMessage({ type: 'result', id: message.id, value: { ...result, messages: [] } });
         }
       } catch (error) { try { port.postMessage({ type: 'error', id: message.id, error: error.message, code: error.code }); } catch {} }
-      finally { if (ownsOperation) activeOperation = null; }
+      finally { if (ownsOperation) {globalThis.window?.postMessage({marker:'max-archive-download-capture',type:'export-end'},globalThis.location?.origin);activeOperation = null;} }
     });
   });
 })();

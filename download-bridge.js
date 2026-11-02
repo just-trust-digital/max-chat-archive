@@ -2,13 +2,14 @@
   const marker = 'max-archive-download-capture';
   const originalClick = HTMLAnchorElement.prototype.click;
   let active = null;
+  let exporting = false;
   const mediaPrototype=typeof HTMLMediaElement==='undefined'?null:HTMLMediaElement.prototype;
   const originalPlay=mediaPrototype?.play;
 
   function disarm() {
     if (active?.timer) clearTimeout(active.timer);
     active = null;
-    if(mediaPrototype?.play===captureAudioPlay) mediaPrototype.play=originalPlay;
+
     if (HTMLAnchorElement.prototype.click === captureClick) HTMLAnchorElement.prototype.click = originalClick;
   }
 
@@ -25,7 +26,7 @@
   }
 
   function captureAudioPlay() {
-    if(active?.mode!=='voice') return originalPlay.call(this);
+    if(active?.mode!=='voice') return exporting ? Promise.resolve() : originalPlay.call(this);
     const url=this.src || this.currentSrc || this.getAttribute('src');
     if(!/^(https?:|blob:)/i.test(url || '')) return Promise.resolve();
     const job=active;
@@ -45,9 +46,12 @@
     })().catch(()=>{if(active===job){disarm();window.postMessage({marker,type:'captured',nonce:job.nonce,href:'',name:''},location.origin);}});
     return Promise.resolve();
   }
+  if(mediaPrototype) mediaPrototype.play=captureAudioPlay;
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.marker !== marker) return;
     const { type, nonce, mode, maxBytes } = event.data;
+    if(type==='export-start') {exporting=true;return;}
+    if(type==='export-end') {exporting=false;disarm();return;}
     if (type === 'cancel' && active?.nonce === nonce) { disarm(); return; }
     if (type !== 'arm' || typeof nonce !== 'string' || nonce.length > 100) return;
     disarm();

@@ -58,7 +58,7 @@ test('voice source is captured without playing private audio and the play hook i
  await new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg').play();
  assert.equal(state.messages.at(-1).href,'https://fd.oneme.ru/voice.ogg');
  assert.equal(state.played(),0);
- assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
+ assert.equal(typeof state.HTMLMediaElement.prototype.play,'function');
  await new state.HTMLMediaElement('https://fd.oneme.ru/ordinary.ogg').play();assert.equal(state.played(),1);
 });
 
@@ -66,10 +66,20 @@ test('voice source is captured without playing private audio and the play hook i
 test('temporary voice blob is captured as bounded inline audio data',async()=>{
  const state=bridge();state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'blob',mode:'voice'});
  await new state.HTMLMediaElement('blob:https://web.max.ru/synthetic').play();await new Promise(resolve=>setImmediate(resolve));
- assert.equal(state.messages.at(-1).href,'data:audio/ogg;base64,T2dnUw==');assert.equal(state.played(),0);assert.equal(state.HTMLMediaElement.prototype.play,state.originalPlay);
+ assert.equal(state.messages.at(-1).href,'data:audio/ogg;base64,T2dnUw==');assert.equal(state.played(),0);assert.equal(typeof state.HTMLMediaElement.prototype.play,'function');
 });
 
 
 test('voice blob respects the configured byte limit without playback',async()=>{
  const state=bridge();state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'small',mode:'voice',maxBytes:3});await new state.HTMLMediaElement('blob:https://web.max.ru/synthetic').play();await new Promise(resolve=>setImmediate(resolve));assert.equal(state.messages.at(-1).href,'');assert.equal(state.played(),0);
+});
+
+test('delayed cached play is suppressed for the entire export',async()=>{
+ const state=bridge(),cached=state.HTMLMediaElement.prototype.play;
+ state.window.postMessage({marker:'max-archive-download-capture',type:'export-start'});
+ state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'late',mode:'voice'});
+ await new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg').play();
+ await cached.call(new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg'));assert.equal(state.played(),0);
+ state.window.postMessage({marker:'max-archive-download-capture',type:'export-end'});
+ await cached.call(new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg'));assert.equal(state.played(),1);
 });

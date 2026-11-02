@@ -322,7 +322,9 @@
     }
     return total;
   }
+  let exportDownloadFolder = null;
   async function saveBlob(blob, filename, overwrite = false) {
+    if(exportDownloadFolder && !filename.startsWith(exportDownloadFolder+'/')) filename=exportDownloadFolder+'/'+filename;
     const url = URL.createObjectURL(blob);
     try {
       const id=await chrome.downloads.download({ url, filename, saveAs: false, ...(overwrite?{conflictAction:'overwrite'}:{}) });
@@ -352,6 +354,7 @@
       runToken = globalThis.MaxReportStore ? await MaxReportStore.beginRun().catch(() => null) : null;
       if (runToken) heartbeat = setInterval(() => { void MaxReportStore.beatRun(runToken).catch(() => {}); }, 10000);
       const folderName=`max-archive-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}-${typeof crypto!=='undefined' && crypto.randomUUID?crypto.randomUUID().slice(0,8):Math.random().toString(36).slice(2,10)}`;
+      exportDownloadFolder=folder?null:folderName;
       const archiveLimit=settings.maxArchiveMB*1024*1024;
       const directory=folder?new ArchiveBudget(new DirectoryArchive((blob,name)=>saveBlob(blob,name,true),folderName),archiveLimit,false):null;
       $('progress-panel').hidden = false; log.replaceChildren(); updateSelection();
