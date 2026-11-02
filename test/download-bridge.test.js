@@ -25,9 +25,12 @@ function bridge() {
   class HTMLMediaElement {constructor(url){this.src=url;}getAttribute(){return this.src;}play(){played++;return Promise.resolve();}}
   const originalPlay=HTMLMediaElement.prototype.play;
   const originalClick = HTMLAnchorElement.prototype.click;
+  let decoded=0,started=0;
+  class BaseAudioContext {decodeAudioData(bytes){decoded++;return Promise.resolve({});}}
+  class AudioBufferSourceNode {start(){started++;}}
   const source = fs.readFileSync(path.join(__dirname, '..', 'download-bridge.js'), 'utf8');
-  vm.runInNewContext(source, { window, location, HTMLAnchorElement, HTMLMediaElement, setTimeout, clearTimeout, Uint8Array, btoa:value=>Buffer.from(value,'binary').toString('base64'),fetch:async()=>({arrayBuffer:async()=>new Uint8Array([79,103,103,83]).buffer,headers:{get:()=> 'audio/ogg'}}) });
-  return { window, messages, HTMLAnchorElement, HTMLMediaElement, originalPlay, played:()=>played, originalClick, ordinaryClicks: () => ordinaryClicks };
+  vm.runInNewContext(source, { window, location, HTMLAnchorElement, HTMLMediaElement, BaseAudioContext, AudioBufferSourceNode, setTimeout, clearTimeout, Uint8Array, btoa:value=>Buffer.from(value,'binary').toString('base64'),fetch:async()=>({arrayBuffer:async()=>new Uint8Array([79,103,103,83]).buffer,headers:{get:()=> 'audio/ogg'}}) });
+  return { window, messages, BaseAudioContext, AudioBufferSourceNode, decoded:()=>decoded, started:()=>started, HTMLAnchorElement, HTMLMediaElement, originalPlay, played:()=>played, originalClick, ordinaryClicks: () => ordinaryClicks };
 }
 
 test('MAX download bridge captures the file URL and restores normal clicks', () => {
@@ -52,7 +55,7 @@ test('cancel disarms the MAX download bridge', () => {
 });
 
 
-test('voice source is captured without playing private audio and the play hook is restored', async()=>{
+test('voice source is captured without playing private audio and ordinary playback remains available', async()=>{
  const state=bridge();
  state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'voice',mode:'voice'});
  await new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg').play();
@@ -82,4 +85,17 @@ test('delayed cached play is suppressed for the entire export',async()=>{
  await cached.call(new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg'));assert.equal(state.played(),0);
  state.window.postMessage({marker:'max-archive-download-capture',type:'export-end'});
  await cached.call(new state.HTMLMediaElement('https://fd.oneme.ru/voice.ogg'));assert.equal(state.played(),1);
+});
+
+
+test('Web Audio voice captures original encoded file bytes and never starts playback during export',async()=>{
+ const state=bridge();
+ state.window.postMessage({marker:'max-archive-download-capture',type:'export-start'});
+ state.window.postMessage({marker:'max-archive-download-capture',type:'arm',nonce:'web-audio',mode:'voice'});
+ await new state.BaseAudioContext().decodeAudioData(new Uint8Array([79,103,103,83]).buffer);
+ new state.AudioBufferSourceNode().start();
+ assert.equal(state.messages.at(-1).href,'data:audio/ogg;base64,T2dnUw==');
+ assert.equal(state.decoded(),1);assert.equal(state.started(),0);
+ state.window.postMessage({marker:'max-archive-download-capture',type:'export-end'});
+ new state.AudioBufferSourceNode().start();assert.equal(state.started(),1);
 });
