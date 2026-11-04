@@ -3,6 +3,7 @@
   "incognito": "not_allowed",
   "name": "MAX Архив",
   "version": "0.3.21",
+  "version_name": "0.3.21-dev.20261105.1",
   "description": "Локальный экспорт чатов MAX с сообщениями и вложениями",
   "permissions": [
     "storage",

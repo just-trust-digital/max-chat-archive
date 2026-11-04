@@ -5,7 +5,7 @@ test('update section sits before footer, collapses without a new version and exp
   const priorFetch = global.fetch;
   function node(tag) { return { tag, children: [], open: false, setAttribute() {}, addEventListener() {}, append(...items) { this.children.push(...items); } }; }
   global.document = { createElement: node };
-  global.chrome = { runtime: { getManifest: () => ({ version: '0.3.14' }) } };
+  global.chrome = { runtime: { getManifest: () => ({ version: '0.3.14', version_name:'0.3.14-dev.fixture' }) } };
   try {
     for (const mode of ['current', 'available', 'offline']) {
       const footer = node('footer');
@@ -19,6 +19,8 @@ test('update section sits before footer, collapses without a new version and exp
       assert.equal(panel.tag, 'details');
       assert.equal(panel.open, mode !== 'current');
       assert.equal(panel.children[0].tag, 'summary');
+      assert.ok(panel.children[0].textContent.includes('0.3.14-dev.fixture'));
+      if(mode==='current')assert.match(panel.children[1].children[1].textContent,/не сравнивает локальные сборки/);
       assert.equal(panel.children[1].children[0].textContent, mode === 'available' ? 'Скачать версию 0.3.15' : mode === 'offline' ? 'Повторить проверку' : 'Проверить обновления');
     }
   } finally { global.fetch = priorFetch; delete global.chrome; delete global.document; }

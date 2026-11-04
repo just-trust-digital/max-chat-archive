@@ -43,12 +43,15 @@ const MaxUpdates = (() => {
     return id;
   }
   async function mount(root) {
+    const manifest=chrome.runtime.getManifest();
+    const installed=manifest.version_name || manifest.version;
+    const versionLabel=`Версия ${installed}`;
     const panel = document.createElement('details');
     panel.className = 'update-panel';
     panel.open = true;
     panel.setAttribute('aria-label', 'Обновление расширения');
     const summary = document.createElement('summary');
-    summary.textContent = 'Обновления';
+    summary.textContent = versionLabel;
     const content = document.createElement('div');
     content.className = 'update-content';
     const button = document.createElement('button');
@@ -69,18 +72,18 @@ const MaxUpdates = (() => {
         release = await check();
         if (release) {
           panel.open = true;
-          summary.textContent = `Обновление ${release.version}`;
+          summary.textContent = `${versionLabel} · доступна ${release.version}`;
           button.textContent = `Скачать версию ${release.version}`;
           status.textContent = 'Доступно обновление MAX Архив.';
         } else {
           panel.open = false;
-          summary.textContent = 'Обновления';
+          summary.textContent = versionLabel;
           button.textContent = 'Проверить обновления';
-          status.textContent = 'У вас установлена актуальная версия, обновление не требуется.';
+          status.textContent = 'На GitHub не найдено опубликованного обновления. Эта проверка не сравнивает локальные сборки.';
         }
       } catch {
         panel.open = true;
-        summary.textContent = 'Обновления';
+        summary.textContent = versionLabel;
         release = null;
         button.textContent = 'Повторить проверку';
         status.textContent = 'Не удалось проверить GitHub. Попробуйте позже.';
