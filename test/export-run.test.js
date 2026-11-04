@@ -11,7 +11,9 @@ test('export activates MAX before reading and returns to its report after saving
   };
   Object.assign(node('limit'), { value: '10000' });
   node('split').value = 'by-chat';
+  node('format').value = 'html-json';
   const events = [];
+  const downloads = [];
   let receive;
   const port = {
     onMessage: { addListener(fn) { receive = fn; } }, onDisconnect: { addListener() {} },
@@ -29,9 +31,9 @@ test('export activates MAX before reading and returns to its report after saving
     chrome: {
       tabs: { connect: () => port, getCurrent: async () => ({ id: 10 }), update: async id => { events.push(`active:${id}`); } },
       storage: { local: { set: async () => {} } }, runtime: { getManifest: () => ({ version: 'test' }) },
-      downloads: { download: async () => { events.push('saved'); return 7; } }
+      downloads: { download: async options => { downloads.push(options.filename); events.push('saved'); return 7; } }
     },
-    ArchiveFormat: { filter: messages => messages, safeName: value => value, add() {}, addIndex() {} },
+    ArchiveFormat: { filter: messages => messages, safeName: value => value, add() {}, addIndex() {}, reportHtml: report => { assert.equal(report.stopped, false); return '<h1>Итоги экспорта MAX</h1>'; } },
     ZipArchive: class { add() {} blob() { return new Blob(['archive']); } }
   };
   vm.runInNewContext(source, context);
@@ -40,4 +42,5 @@ test('export activates MAX before reading and returns to its report after saving
   assert.ok(events.indexOf('active:7') < events.indexOf('export'), 'activate MAX before starting content work');
   assert.ok(events.indexOf('active:10') > events.indexOf('saved'), 'return after saving');
   assert.equal(node('progress-text').textContent, 'Экспорт завершён');
+  assert.ok(downloads.some(name => name.endsWith('/max-archive-summary.html')));
 });

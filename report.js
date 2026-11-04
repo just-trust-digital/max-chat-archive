@@ -95,7 +95,7 @@
     $('report-contact').value = report.contact || '';
     screenshots = report.screenshots || [];
     renderImages();
-    if (report.kind === 'crash') { $('report-kind').disabled = true; message('Экспорт неожиданно прервался. Опишите, что вы делали, и проверьте отчёт.'); }
+    if (report.kind === 'crash') { $('report-kind').disabled = true; message('Во время экспорта возникла ошибка. Проверьте итоговый отчёт: часть чатов могла сохраниться. Опишите проблему перед отправкой обращения.'); }
     if (report.attempts) {
       for (const id of ['report-kind', 'report-text', 'report-contact', 'report-files', 'report-file-button']) $(id).disabled = true;
       $('report-send').textContent = report.state === 'sent' ? 'Отправлено' : 'Повторить отправку';

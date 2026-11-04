@@ -420,7 +420,7 @@
           }
           report.chats.push(summary);
           if(directory) {ArchiveFormat.addIndex(directory,report.chats,settings.format);directory.add('report.json',JSON.stringify(report,null,2));await directory.flush();}
-          rows[index].textContent = `${result.title} — ${result.messages.length} сообщений${result.complete ? ', готово' : ', история загружена частично'}`;
+          rows[index].textContent = `${result.title} — ${result.messages.length} сообщений${result.complete ? ', готово' : ', полнота истории не подтверждена'}`;
         } catch (error) {
           await queueUnexpected(error);
           report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
@@ -431,14 +431,18 @@
         $('overall-text').textContent = `Обработано ${index + 1} из ${selected.length} чатов`;
       }
       if(directory) {ArchiveFormat.addIndex(directory,report.chats,settings.format);directory.add('report.json',JSON.stringify(report,null,2));await directory.flush();}
-      if (report.chats.length) {
+      report.stopped = stopped;
+      if (report.chats.length || report.errors.length) {
         stage('Сохранение отчёта…');
         if(directory) {
+          if(settings.format.includes('html')) {directory.add('report.html',ArchiveFormat.reportHtml(report));await directory.flush();}
           stage('Папка сохранена');
         } else if (perChat) {
+          if(settings.format.includes('html')) await saveBlob(new Blob([ArchiveFormat.reportHtml(report)],{type:'text/html;charset=utf-8'}),'max-archive-summary.html');
           if (selected.length > 1 || report.errors.length) await saveBlob(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }), 'max-archive-summary.json');
         } else {
           ArchiveFormat.addIndex(combinedZip,report.chats,settings.format);
+          if(settings.format.includes('html')) combinedZip.add('report.html',ArchiveFormat.reportHtml(report));
           combinedZip.add('report.json', JSON.stringify(report, null, 2));
           await saveZip(combinedZip, `max-archive-${new Date().toISOString().slice(0, 10)}.zip`);
         }
