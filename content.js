@@ -661,7 +661,9 @@
           await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
           const contacts=await collectParticipants(message.options,progress,assertActive);
-          const result = {...await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,{...value,...contacts})),...contacts};
+          const route=globalThis.location?.pathname || '/';
+          const sourceUrl=route!=='/' && globalThis.location?.origin==='https://web.max.ru' ? globalThis.location.origin+route : null;
+          const result = {...await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,{...value,...contacts})),...contacts,sourceUrl};
           const self=contacts.participants.find(person=>person.self)?.name;
           if(self) for(const item of result.messages) if(item.direction==='out') item.author=self;
           const messages = result.messages;

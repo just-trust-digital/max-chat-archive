@@ -202,10 +202,10 @@
     finally { $('refresh').disabled = false; }
   }
   function filename(index, chat) { return `${String(index + 1).padStart(3, '0')}-${ArchiveFormat.safeName(chat.title)}`; }
-  async function readLimited(response, controller, limit) {
+  async function readLimited(response, controller, limit, code = 'file_limit') {
     if (!response.body) {
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.length > limit) throw new Error(`Файл больше ${Math.round(limit/1024/1024)} МБ`);
+      if (bytes.length > limit) throw Object.assign(new Error(code==='archive_limit'?'Лимит архива':`Файл больше ${Math.round(limit/1024/1024)} МБ`),{code});
       return bytes;
     }
     const reader = response.body.getReader();
@@ -215,7 +215,7 @@
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > limit) { controller.abort(); throw new Error(`Файл больше ${Math.round(limit/1024/1024)} МБ`); }
+      if (size > limit) { controller.abort(); throw Object.assign(new Error(code==='archive_limit'?'Лимит архива':`Файл больше ${Math.round(limit/1024/1024)} МБ`),{code}); }
       chunks.push(value);
     }
     const bytes = new Uint8Array(size);
@@ -247,6 +247,7 @@
   }
   async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024, fileLimit = 25 * 1024 * 1024) {
     let total = initialBytes;
+    const failure=(attachment,reason,extra={})=>{const message=chat.messages.find(item=>item.attachments.includes(attachment));return {chatId:chat.chatId || null,chat:chat.title,path,url:attachment.url,name:attachment.name,messageId:message?.id || null,messageDate:message?.date || null,messageTime:message?.time || null,reason,...extra};};
     const used = new Map(), imageDetails = new Map();
     const media=chat.messages.flatMap(message=>message.attachments);
     const candidates=media.filter(attachment=>attachment.downloadable && attachment.url);
@@ -263,7 +264,7 @@
         const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
         const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=Math.ceil(fileLimit*4/3)+1024;
         if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost || url.port || url.username || url.password)) throw new Error('Адрес вне разрешённых доменов медиа');
-        if (total >= byteLimit) throw new Error('Лимит архива');
+        if (total >= byteLimit) throw Object.assign(new Error('Лимит архива'),{code:'archive_limit'});
         const controller = new AbortController(); currentAbort = controller;
         const video = attachment.kind === 'video' || attachment.mimeType?.startsWith('video/') || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
         timer = setTimeout(() => controller.abort(), video ? 120000 : 30000);
@@ -271,8 +272,8 @@
         const response = await fetch(url.href, { credentials: 'include', redirect: 'error', referrerPolicy: 'no-referrer', signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const size = Number(response.headers.get('content-length'));
-        if (size > fileLimit) throw new Error(`Файл больше ${fileLimit/1024/1024} МБ`);
-        let bytes = await readLimited(response, controller, Math.min(fileLimit,byteLimit-total,zip.remaining ?? Infinity));
+        if (size > fileLimit) throw Object.assign(new Error(`Файл больше ${fileLimit/1024/1024} МБ`),{code:'file_limit'});
+        let bytes = await readLimited(response, controller, Math.min(fileLimit,byteLimit-total,zip.remaining ?? Infinity),fileLimit<=Math.min(byteLimit-total,zip.remaining ?? Infinity)?'file_limit':'archive_limit');
         attachment.mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (bytes.length > fileLimit || total + bytes.length > byteLimit) throw new Error('Превышен лимит размера');
         let name = ArchiveFormat.safeName(attachment.name || decodeURIComponent(url.pathname.split('/').pop()) || attachment.kind);
@@ -308,7 +309,7 @@
         imageDetails.set(attachment.url,{mimeType,...details});
         total += bytes.length+(originalBytes?.length || 0);
         if(originalBytes) (report.convertedImages ??=[]).push({localPath,...details});
-      } catch (error) { if(error.code==='DIRECTORY_WRITE') throw error;if(error.code==='CHECKPOINT_WRITE') {error.message=`Не удалось сохранить копию файла: ${error.message}`;throw error;} report.skippedMedia.push({ url: attachment.url, reason: error.name === 'AbortError' ? 'Превышено время загрузки' : error.message }); }
+      } catch (error) { if(error.code==='DIRECTORY_WRITE') throw error;if(error.code==='CHECKPOINT_WRITE') {error.message=`Не удалось сохранить копию файла: ${error.message}`;throw error;} report.skippedMedia.push(failure(attachment,error.name === 'AbortError' ? 'Превышено время загрузки' : error.message,{code:error.code})); }
       finally { clearTimeout(timer); currentAbort = null; completed++; onProgress(completed, entries.length); }
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
@@ -316,9 +317,9 @@
       if (attachment.posterUrl && used.has(attachment.posterUrl)) attachment.posterPath=used.get(attachment.posterUrl);
     }
     for (const message of chat.messages) for (const attachment of message.attachments) {
-      if (attachment.source === 'download-button') report.skippedMedia.push({ name: attachment.name, reason: 'Веб-версия не показывает прямой адрес файла' });
-      if (attachment.source === 'voice-tile') report.skippedMedia.push({name:attachment.name,reason:'Не удалось получить голосовое сообщение',detail:attachment.resolutionError || 'message_not_revisited'});
-      if (attachment.source === 'photo-tile') report.skippedMedia.push({ name: attachment.name, reason: 'Не удалось получить фотографию из просмотрщика MAX', detail: attachment.resolutionError || 'message_not_revisited', diagnostics: attachment.resolutionDiagnostics });
+      if (attachment.source === 'download-button') report.skippedMedia.push(failure(attachment,'Веб-версия не показывает прямой адрес файла',{code:'address_unavailable'}));
+      if (attachment.source === 'voice-tile') report.skippedMedia.push(failure(attachment,'Не удалось получить голосовое сообщение',{code:'address_unavailable',detail:attachment.resolutionError || 'message_not_revisited'}));
+      if (attachment.source === 'photo-tile') report.skippedMedia.push(failure(attachment,'Не удалось получить фотографию из просмотрщика MAX',{code:'address_unavailable',detail:attachment.resolutionError || 'message_not_revisited',diagnostics:attachment.resolutionDiagnostics}));
     }
     return total;
   }
@@ -380,7 +381,8 @@
         if (stopped) break;
         const info = selected[index];
         const checkpointId=`${runId}:${index}`;
-        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat:ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(chat,settings):chat,settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
+        const identity={chatId:checkpointId,exportNumber:index+1,sourceKey:settings.anonymize?null:(info?.key || null)};
+        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat:{...(ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(chat,settings):chat),...identity},settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
         note(`Чат ${index + 1} из ${selected.length}: ${info?.title || 'открытый чат'}`);
         rows[index].textContent = `${info?.title || 'Открытый чат'} — чтение истории`;
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
@@ -395,6 +397,7 @@
           stage(`Чат ${index + 1} из ${selected.length}: подготовка сообщений…`);
           if(ArchiveFormat.prepareChat) Object.assign(result,ArchiveFormat.prepareChat(result,settings));
           const unknownDates = result.messages.filter(message => !ArchiveFormat.dateOf(message)).length;
+          Object.assign(result,identity);
           result.messages = ArchiveFormat.filter(result.messages, settings);
           await saveCopy(result,'media');
           const path = filename(index, result);
@@ -412,7 +415,8 @@
           await saveCopy(result,'ready');
           stage(`Чат ${index + 1} из ${selected.length}: ${folder?'запись в папку':'создание ZIP'}…`);
           ArchiveFormat.add(zip, path, result, settings.format);
-          const summary = { title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, participants:result.participants?.length || 0,participantsStatus:result.participantsStatus || 'unavailable', history: result.history };
+          const dates=result.messages.map(item=>ArchiveFormat.dateOf?.(item)).filter(Boolean).sort();
+          const summary = { ...identity, sourceUrl:result.sourceUrl || null, dateFrom:dates[0] || null,dateTo:dates.at(-1) || null,archiveFile:perChat?`max-archive-${path}.zip`:path, title: result.title, path, messages: result.messages.length, complete: result.complete, reason: result.reason, gaps: result.gaps, unknownDates, participants:result.participants?.length || 0,participantsStatus:result.participantsStatus || 'unavailable', history: result.history };
           if (perChat) {
             ArchiveFormat.addIndex(zip,[summary],settings.format);
             zip.add('report.json', JSON.stringify({ ...report, chats: [summary], skippedMedia: report.skippedMedia.slice(skippedBefore), convertedImages:(report.convertedImages || []).slice(convertedBefore), conversionErrors:(report.conversionErrors || []).slice(conversionErrorsBefore), mediaBytes: chatMediaBytes }, null, 2));
@@ -423,7 +427,7 @@
           rows[index].textContent = `${result.title} — ${result.messages.length} сообщений${result.complete ? ', готово' : ', полнота истории не подтверждена'}`;
         } catch (error) {
           await queueUnexpected(error);
-          report.errors.push({ chat: info?.title || 'Открытый чат', error: error.message });
+          report.errors.push({ ...identity, chat: info?.title || 'Открытый чат', error: error.message });
           rows[index].textContent = `${info?.title || 'Открытый чат'} — ошибка: ${error.message}`;
           if (['MAX_HIDDEN','CHECKPOINT_WRITE','EXPORT_BUSY','DIRECTORY_WRITE','ARCHIVE_LIMIT'].includes(error.code)) stopped = true;
         }
@@ -446,7 +450,7 @@
           combinedZip.add('report.json', JSON.stringify(report, null, 2));
           await saveZip(combinedZip, `max-archive-${new Date().toISOString().slice(0, 10)}.zip`);
         }
-        note(`${directory?`Папка ${directory.name} сохранена. Откройте index.html.`:'ZIP сохранён.'} Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}; ошибок JPG: ${report.conversionErrors?.length || 0}.`);
+        note(`${directory?`Папка ${directory.name} сохранена. Откройте index.html.`:'ZIP сохранён.'} Чатов: ${report.chats.length}; ошибок: ${report.errors.length}; пропущенных файлов: ${report.skippedMedia.length}${ArchiveFormat.mediaSummary && report.skippedMedia.length?' ('+ArchiveFormat.mediaSummary(report.skippedMedia)+')':''}; ошибок JPG: ${report.conversionErrors?.length || 0}.`);
         stage(stopped ? 'Экспорт остановлен' : 'Экспорт завершён');
       } else note(report.errors[0]?.error || 'Нет данных для архива.', true);
     } catch (error) { await queueUnexpected(error); note(error.message,true); }
