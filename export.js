@@ -14,7 +14,7 @@
   let recoveryBusy=false, retryingId=null, historyView=false;
   function showView(view) {
     if(running || recoveryBusy) return;
-    const history=view==='history';historyView=history;status.hidden=history;
+    const history=view==='history';historyView=history;status.hidden=history && status.getAttribute?.('data-error')!=='true';
     if($('settings-panel')) $('settings-panel').hidden=history;
     if($('recovery-panel')) $('recovery-panel').hidden=!history;
     if($('runbar')) $('runbar').hidden=history;
@@ -382,7 +382,7 @@
         const info = selected[index];
         const checkpointId=`${runId}:${index}`;
         const identity={chatId:checkpointId,exportNumber:index+1,sourceKey:settings.anonymize?null:(info?.key || null)};
-        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,chat:{...(ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(chat,settings):chat),...identity},settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
+        const saveCopy = async (chat,state) => {if(durable) {try {await durable.put({id:checkpointId,jobId:runId,chat:{...(ArchiveFormat.prepareChat?ArchiveFormat.prepareChat(chat,settings):chat),...identity},settings,path:filename(index,chat),state,extensionVersion:report.extensionVersion});} catch(error){error.code='CHECKPOINT_WRITE';throw error;}$('checkpoint-text').textContent=`Копия сохранена · сообщений: ${chat.messages.length} · ${new Date().toLocaleTimeString('ru-RU')}`;}};
         note(`Чат ${index + 1} из ${selected.length}: ${info?.title || 'открытый чат'}`);
         rows[index].textContent = `${info?.title || 'Открытый чат'} — чтение истории`;
         stage(`Чат ${index + 1} из ${selected.length}: чтение истории…`);
@@ -546,11 +546,16 @@
     finally {recoveryBusy=false;retryingId=null;start.disabled=running;recoveryControls(running);if(button) button.textContent='Докачать файлы';}
   }
   async function renderRecovery() {
-    if(!durable) return;
+    if(!durable) {if($('recovery-empty')) {$('recovery-empty').textContent='Хранилище копий недоступно в этом браузере.';$('recovery-empty').hidden=false;}return;}
     try {
       const saved=await durable.list(), container=$('recovery-list');
-      container.replaceChildren();if($('history-count')) $('history-count').textContent=String(saved.length);if($('recovery-empty')) $('recovery-empty').hidden=!!saved.length;
-      for(const copy of saved) {
+      const jobs=durable.group?durable.group(saved):saved.map(copy=>({id:copy.id,copies:[copy],messages:copy.messages,updatedAt:copy.updatedAt}));
+      container.replaceChildren();if($('history-count')) $('history-count').textContent=String(jobs.length);if($('recovery-empty')) $('recovery-empty').hidden=!!saved.length;
+      for(const job of jobs) {
+        const task=document.createElement('details');task.className='history-job';
+        const heading=document.createElement('summary');heading.textContent=`Экспорт ${new Date(job.updatedAt).toLocaleString('ru-RU')} · чатов: ${job.copies.length} · сообщений: ${job.messages}`;
+        const jobId=document.createElement('small');jobId.textContent=`ID задачи: ${job.id}`;task.append(heading,jobId);container.append(task);
+        for(const copy of job.copies) {
         const row=document.createElement('div');row.className='recovery-row';
         const info=document.createElement('div');info.className='recovery-info';
         const title=document.createElement('strong');title.textContent=copy.title;
@@ -566,9 +571,10 @@
         retry.addEventListener('click',()=>retryCopy(copy.id,feedback,retry));
         const remove=document.createElement('button');remove.className='text-button';remove.textContent='Удалить копию';remove.disabled=running;
         remove.addEventListener('click',async()=>{if(running || recoveryBusy) return;try{await durable.remove(copy.id);await renderRecovery();}catch(error){note(error.message,true);}});
-        actions.append(download,retry,remove);row.append(info,actions,feedback);container.append(row);
+        actions.append(download,retry,remove);row.append(info,actions,feedback);task.append(row);
       }
-    } catch(error) {note(`Сохранённые копии недоступны: ${error.message}`,true);}
+      }
+    } catch(error) {if($('recovery-empty')) $('recovery-empty').hidden=true;note(`Сохранённые копии недоступны: ${error.message}`,true);}
   }
   async function init() {
     await renderRecovery();
@@ -603,6 +609,7 @@
   $('destination')?.addEventListener('change',updateDestination);
   $('download-mode')?.addEventListener('change',syncDownloadMode);
   $('settings-tab')?.addEventListener('click',()=>showView('settings'));
+  $('repair-history')?.addEventListener('click',async()=>{if(running || recoveryBusy)return;try{if(!durable)throw Error('Хранилище недоступно');await durable.repairCatalog();await renderRecovery();}catch(error){note(`Не удалось проверить копии: ${error.message}`,true);}});
   $('history-tab')?.addEventListener('click',()=>showView('history'));
   function stopExport() { stopped = true; currentAbort?.abort(); if(running) port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
   $('anonymize')?.addEventListener('change',updatePrivacy);

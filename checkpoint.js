@@ -1,7 +1,7 @@
 // Local, transactional recovery copies. No network or account access.
 const CheckpointStore = (() => {
   let database;
-  const summary = value => ({id:value.id,path:value.path,title:value.chat.title,messages:value.chat.messages.length,updatedAt:value.updatedAt,state:value.state});
+  const summary = value => ({id:value.id,jobId:value.jobId,path:value.path,title:value.chat.title,messages:value.chat.messages.length,updatedAt:value.updatedAt,state:value.state});
   async function open() {
     if (database) return database;
     database = await new Promise((resolve, reject) => {
@@ -34,11 +34,29 @@ const CheckpointStore = (() => {
       tx.onabort=()=>reject(tx.error || new Error('Сохранение копии прервано.'));
     });
   }
+  function group(copies) {
+    const groups=new Map();
+    for(const copy of copies) {
+      const id=copy.jobId || String(copy.id).replace(/:\d+$/,'');
+      if(!groups.has(id)) groups.set(id,{id,copies:[],messages:0,updatedAt:copy.updatedAt || ''});
+      const job=groups.get(id);job.copies.push(copy);job.messages+=Number(copy.messages)||0;
+      if((copy.updatedAt || '')>job.updatedAt) job.updatedAt=copy.updatedAt;
+    }
+    return [...groups.values()].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  }
+  async function repairCatalog() {
+    await transaction(['chats','catalog'],'readwrite',tx=>{
+      const request=tx.objectStore('chats').openCursor();
+      request.onsuccess=()=>{const cursor=request.result;if(cursor){tx.objectStore('catalog').put(summary(cursor.value));cursor.continue();}};
+    });
+  }
   return {
+    group, repairCatalog,
     async put(value) { const record={...value,updatedAt:new Date().toISOString()}; await transaction(['chats','catalog'],'readwrite',tx=>{tx.objectStore('chats').put(record);tx.objectStore('catalog').put(summary(record));}); },
     async get(id) {return transaction(['chats'],'readonly',tx=>tx.objectStore('chats').get(id));},
     async list() {
-      const values=await transaction(['catalog'],'readonly',tx=>tx.objectStore('catalog').getAll());
+      let values=await transaction(['catalog'],'readonly',tx=>tx.objectStore('catalog').getAll());
+      if(!values.length) {await repairCatalog();values=await transaction(['catalog'],'readonly',tx=>tx.objectStore('catalog').getAll());}
       return values.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
     },
     async file(id, url, value) {
