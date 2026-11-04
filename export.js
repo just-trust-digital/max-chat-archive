@@ -261,7 +261,7 @@
       let timer;
       try {
         const url = new URL(attachment.inlineData || attachment.url);
-        const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
+        const mediaHost = url.hostname === 'max.ru' || url.hostname.endsWith('.max.ru') || ['i.oneme.ru', 'fd.oneme.ru', 'a.oneme.ru', 'iv.okcdn.ru'].includes(url.hostname) || /^maxvd\d+\.okcdn\.ru$/.test(url.hostname);
         const inlineAudio = attachment.kind==='voice' && /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(attachment.inlineData || '') && attachment.inlineData.length<=Math.ceil(fileLimit*4/3)+1024;
         if (!inlineAudio && (url.protocol !== 'https:' || !mediaHost || url.port || url.username || url.password)) throw new Error('Адрес вне разрешённых доменов медиа');
         if (total >= byteLimit) throw Object.assign(new Error('Лимит архива'),{code:'archive_limit'});

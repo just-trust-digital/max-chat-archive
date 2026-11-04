@@ -206,3 +206,10 @@ test('folder and combined media honor the remaining shared byte allowance',async
  const total=await exporter.downloadMedia({add:(_name,bytes)=>files.push(bytes)}, {messages:[{attachments:[{name:'file',url:'https://st.max.ru/file',downloadable:true}]}]},'chat',report,4,()=>{},null,6,10);
  assert.equal(total,4);assert.equal(files.length,0);assert.equal(report.skippedMedia.length,1);
 });
+
+test('observed audio and image hosts from the user export are downloadable without broadening CDN wildcards',async()=>{
+ const requested=[];const api=loadExporter(async url=>{requested.push(url);return new Response(new Uint8Array([1,2]),{headers:{'content-type':'application/octet-stream'}});});
+ const attachments=['https://a.oneme.ru/audio','https://iv.okcdn.ru/image'].map(url=>({url,downloadable:true,name:'file'}));const report={skippedMedia:[]};
+ await api.downloadMedia({add(){}},{messages:[{attachments}]},'001-chat',report,0,()=>{});
+ assert.equal(requested.length,2);assert.equal(report.skippedMedia.length,0);
+});
