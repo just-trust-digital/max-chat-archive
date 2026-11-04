@@ -11,15 +11,15 @@
   const stageProgress = $('stage-progress');
   let port, sequence = 0, pending = new Map(), chats = [], discoveryComplete = false, running = false, stopped = false, currentAbort = null;
   const durable = typeof CheckpointStore === 'undefined' ? null : CheckpointStore;
-  let recoveryBusy=false;
+  let recoveryBusy=false, retryingId=null, historyView=false;
   function showView(view) {
     if(running || recoveryBusy) return;
-    const history=view==='history';
+    const history=view==='history';historyView=history;status.hidden=history;
     if($('settings-panel')) $('settings-panel').hidden=history;
     if($('recovery-panel')) $('recovery-panel').hidden=!history;
     if($('runbar')) $('runbar').hidden=history;
     if($('page-heading')) $('page-heading').textContent=history?'История экспорта':'Настройки экспорта';
-    if($('page-description')) $('page-description').textContent=history?'Скачайте сохранённую копию переписки.':'Выберите чаты и содержимое архива.';
+    if($('page-description')) $('page-description').textContent=history?'Сообщения и файлы, сохранённые в этом браузере.':'Выберите чаты и содержимое архива.';
     for(const name of ['settings','history']) {
       const tab=$(name+'-tab');
       if(name===view) tab?.setAttribute?.('aria-current','page');
@@ -41,7 +41,7 @@
   }
   const defaults = { format: 'html-json', split: 'by-chat', destination:'zip', maxFileMB:25, maxArchiveMB:250, media: true, downloadMedia: true, links: true, reactions: true, limit: 10000 };
 
-  function note(message, error = false) { status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
+  function note(message, error = false) { status.hidden=historyView && !error;status.textContent = message; status.style.color = '';status.setAttribute?.('data-error',String(error)); }
   let pendingReportId = null;
   let seriousReported = false;
   function showReportPrompt(id) {
@@ -245,14 +245,14 @@
     try {return await Promise.race([work,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Превышено время преобразования JPG')),15000);})]);}
     finally {clearTimeout(timer);}
   }
-  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024, fileLimit = 25 * 1024 * 1024) {
+  async function downloadMedia(zip, chat, path, report, initialBytes, onProgress, checkpointId = null, byteLimit = 250 * 1024 * 1024, fileLimit = 25 * 1024 * 1024, cachedFiles = [], namePrefix = '') {
     let total = initialBytes;
     const failure=(attachment,reason,extra={})=>{const message=chat.messages.find(item=>item.attachments.includes(attachment));return {chatId:chat.chatId || null,chat:chat.title,path,url:attachment.url,name:attachment.name,messageId:message?.id || null,messageDate:message?.date || null,messageTime:message?.time || null,reason,...extra};};
-    const used = new Map(), imageDetails = new Map();
+    const used = new Map(cachedFiles.map(file=>[file.url,file.localPath])), imageDetails = new Map(cachedFiles.map(file=>[file.url,Object.fromEntries(['mimeType','sourceMimeType','originalLocalPath','imageConversion','imageConversionError'].filter(key=>file[key]!==undefined).map(key=>[key,file[key]]))]));
     const media=chat.messages.flatMap(message=>message.attachments);
     const candidates=media.filter(attachment=>attachment.downloadable && attachment.url);
     const posters=candidates.filter(attachment=>attachment.posterUrl).map(attachment=>({kind:'photo',name:'Обложка видео',url:attachment.posterUrl,downloadable:true}));
-    const entries=[...new Map([...candidates,...posters].map(attachment=>[attachment.url,attachment])).values()];
+    const entries=[...new Map([...candidates,...posters].map(attachment=>[attachment.url,attachment])).values()].filter(attachment=>!used.has(attachment.url));
     let completed = 0;
     onProgress(completed, entries.length);
     for (const attachment of entries) {
@@ -282,7 +282,7 @@
           const ext = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif', 'video/mp4': '.mp4', 'video/webm': '.webm', 'audio/mpeg': '.mp3', 'audio/ogg': '.ogg', 'audio/opus': '.opus', 'audio/webm': '.webm', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'application/pdf': '.pdf' }[type.split(';')[0].trim().toLowerCase()] || '';
           name += ext;
         }
-        const prefix=String(used.size+1).padStart(4,'0');
+        const prefix=namePrefix+String(used.size+1).padStart(4,'0');
         let localPath=`media/${prefix}-${name}`, originalBytes=null, details={};
         if(attachment.mimeType==='image/webp') {
           try {
@@ -509,13 +509,41 @@
       ArchiveFormat.add(zip,saved.path,chat,saved.settings.format);
       ArchiveFormat.addIndex(zip,[{title:chat.title,path:saved.path,messages:chat.messages.length,complete:chat.complete}],saved.settings.format);
       const missing=chat.messages.flatMap(message=>message.attachments).filter(item=>!item.localPath && item.kind!=='file-or-link');
-      zip.add('report.json',JSON.stringify({recovered:true,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],missingFiles:missing.length,convertedImages:files.filter(file=>referenced.has(file.url) && file.imageConversion).map(file=>({localPath:file.localPath,originalLocalPath:file.originalLocalPath,sourceMimeType:file.sourceMimeType,imageConversion:file.imageConversion})),conversionErrors:files.filter(file=>referenced.has(file.url) && file.imageConversionError).map(file=>({localPath:file.localPath,reason:file.imageConversionError,originalPreserved:true}))},null,2));
+      const recoveryReport={recovered:true,retryReport:saved.retryReport,checkpointAt:saved.updatedAt,extensionVersion:saved.extensionVersion,options:saved.settings,chats:[{chatId:chat.chatId || saved.id,sourceKey:chat.sourceKey,path:saved.path,sourceUrl:chat.sourceUrl,title:chat.title,messages:chat.messages.length,complete:chat.complete,reason:chat.reason,history:chat.history,participants:chat.participants?.length || 0,participantsStatus:chat.participantsStatus || 'unavailable'}],skippedMedia:saved.retryReport?.skippedMedia || missing.map(item=>({chat:chat.title,chatId:chat.chatId || saved.id,path:saved.path,name:item.name,reason:'Файл отсутствует в сохранённой копии'})),missingFiles:missing.length,convertedImages:files.filter(file=>referenced.has(file.url) && file.imageConversion).map(file=>({localPath:file.localPath,originalLocalPath:file.originalLocalPath,sourceMimeType:file.sourceMimeType,imageConversion:file.imageConversion})),conversionErrors:files.filter(file=>referenced.has(file.url) && file.imageConversionError).map(file=>({localPath:file.localPath,reason:file.imageConversionError,originalPreserved:true}))};
+      zip.add('report.json',JSON.stringify(recoveryReport,null,2));
+      if(saved.settings.format.includes('html') && ArchiveFormat.reportHtml) zip.add('report.html',ArchiveFormat.reportHtml(recoveryReport));
       show('Скачивание восстановленного ZIP…');
       await saveZip(zip,`max-recovered-${saved.path}.zip`);
       show(`Копия скачана. Сообщений: ${chat.messages.length}; файлов без локальной копии: ${missing.length}.`);
       return true;
     } catch(error) {show(`Не удалось скачать копию: ${error.message}`,true);return false;}
     finally {recoveryBusy=false;start.disabled=running;recoveryControls(running);if(button) button.textContent='Скачать сохранённое';}
+  }
+  async function retryCopy(id, feedback, button) {
+    if(retryingId===id) {stopped=true;currentAbort?.abort();feedback.textContent='Останавливаем докачку…';return false;}
+    if(running || recoveryBusy) {feedback.textContent='Дождитесь завершения текущего экспорта или скачивания копии.';return false;}
+    recoveryBusy=true;retryingId=id;stopped=false;start.disabled=true;recoveryControls(true);
+    if(button) {button.textContent='Остановить докачку';button.disabled=false;}
+    const show=text=>{feedback.textContent=text;};
+    try {
+      const saved=await durable.get(id);
+      if(!saved?.chat?.messages) throw new Error('Сохранённая копия не найдена.');
+      const maxFileMB=Number($('max-file-mb')?.value || defaults.maxFileMB),maxArchiveMB=Number($('max-archive-mb')?.value || defaults.maxArchiveMB);
+      if(!Number.isInteger(maxFileMB) || maxFileMB<1 || maxFileMB>2000 || !Number.isInteger(maxArchiveMB) || maxArchiveMB<1 || maxArchiveMB>4000) throw new Error('Проверьте лимиты размера в настройках экспорта.');
+      const files=await durable.files(id);
+      const initialFileCount=files.length;
+      const bytes=files.reduce((sum,file)=>sum+file.bytes.length+(file.originalBytes?.length || 0),0);
+      const report={chats:[],errors:[],skippedMedia:[],mediaBytes:bytes};
+      // Existing bytes stay in IndexedDB. Only missing URLs are requested and
+      // new file paths cannot collide with earlier attempts.
+      await downloadMedia({add(){}},saved.chat,saved.path,report,bytes,(done,total)=>show(`Докачка файлов: ${done} из ${total}.`),id,maxArchiveMB*1024*1024,maxFileMB*1024*1024,files,`retry-${Date.now()}-`);
+      saved.settings={...saved.settings,maxFileMB,maxArchiveMB};
+      saved.retryReport={...report,stopped,at:new Date().toISOString(),downloadedFiles:(await durable.files(id)).length-initialFileCount};
+      await durable.put({...saved,state:'ready'});
+      show(`${stopped?'Докачка остановлена. ':''}Докачано файлов: ${saved.retryReport.downloadedFiles}. Не загружено: ${report.skippedMedia.length}${report.skippedMedia.length?' ('+ArchiveFormat.mediaSummary(report.skippedMedia)+')':''}. Нажмите «Скачать сохранённое», чтобы получить новый ZIP.`);
+      return true;
+    } catch(error) {show(`Докачка не завершена: ${error.message}. Уже сохранённые файлы доступны в копии.`);return false;}
+    finally {recoveryBusy=false;retryingId=null;start.disabled=running;recoveryControls(running);if(button) button.textContent='Докачать файлы';}
   }
   async function renderRecovery() {
     if(!durable) return;
@@ -528,15 +556,17 @@
         const title=document.createElement('strong');title.textContent=copy.title;
         const detail=document.createElement('small');
         const state={history:'Чтение истории',media:'Обработка вложений',ready:'Подготовлено к сохранению'}[copy.state] || 'Копия';
-        detail.textContent=`Сообщений: ${copy.messages} · ${new Date(copy.updatedAt).toLocaleString('ru-RU')} · Последний сохранённый этап: ${state}`;
+        detail.textContent=`${copy.path?'Архив: '+copy.path+' · ':'ID копии: '+copy.id+' · '}Сообщений: ${copy.messages} · ${new Date(copy.updatedAt).toLocaleString('ru-RU')} · Последний сохранённый этап: ${state}`;
         info.append(title,detail);
         const actions=document.createElement('div');actions.className='actions';
         const download=document.createElement('button');download.className='secondary';download.textContent='Скачать сохранённое';download.disabled=running;
         const feedback=document.createElement('div');feedback.className='recovery-feedback';feedback.setAttribute('role','status');
         download.addEventListener('click',()=>recoverCopy(copy.id,feedback,download));
+        const retry=document.createElement('button');retry.className='secondary';retry.textContent='Докачать файлы';retry.disabled=running;
+        retry.addEventListener('click',()=>retryCopy(copy.id,feedback,retry));
         const remove=document.createElement('button');remove.className='text-button';remove.textContent='Удалить копию';remove.disabled=running;
         remove.addEventListener('click',async()=>{if(running || recoveryBusy) return;try{await durable.remove(copy.id);await renderRecovery();}catch(error){note(error.message,true);}});
-        actions.append(download,remove);row.append(info,actions,feedback);container.append(row);
+        actions.append(download,retry,remove);row.append(info,actions,feedback);container.append(row);
       }
     } catch(error) {note(`Сохранённые копии недоступны: ${error.message}`,true);}
   }
@@ -574,7 +604,7 @@
   $('download-mode')?.addEventListener('change',syncDownloadMode);
   $('settings-tab')?.addEventListener('click',()=>showView('settings'));
   $('history-tab')?.addEventListener('click',()=>showView('history'));
-  function stopExport() { stopped = true; currentAbort?.abort(); port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
+  function stopExport() { stopped = true; currentAbort?.abort(); if(running) port?.postMessage({ type: 'cancel' }); note('Останавливаем после текущего шага…'); visibilityPrompt(false); }
   $('anonymize')?.addEventListener('change',updatePrivacy);
   cancel.addEventListener('click', stopExport);
   init();

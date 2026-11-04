@@ -1,7 +1,7 @@
 // Local, transactional recovery copies. No network or account access.
 const CheckpointStore = (() => {
   let database;
-  const summary = value => ({id:value.id,title:value.chat.title,messages:value.chat.messages.length,updatedAt:value.updatedAt,state:value.state});
+  const summary = value => ({id:value.id,path:value.path,title:value.chat.title,messages:value.chat.messages.length,updatedAt:value.updatedAt,state:value.state});
   async function open() {
     if (database) return database;
     database = await new Promise((resolve, reject) => {
