@@ -6,3 +6,5 @@ node_modules/
 .research/
 output/
 tmp/pdfs/
+
+__pycache__/
