@@ -131,3 +131,16 @@ test('participant files and selected attachment types obey privacy options',()=>
  const anonymous=ArchiveFormat.prepareChat(chat,{media:true,anonymize:true});const redacted=new Map();ArchiveFormat.add({add:(path,value)=>redacted.set(path,value)},'chat',anonymous,'html-json');
  assert.ok(!redacted.has('chat/participants.json'));assert.ok(!redacted.get('chat/messages.html').includes('Контакт'));assert.equal(anonymous.participants.length,0);
 });
+
+
+test('profile contact is included for every format and removed by anonymization', () => {
+  const chat={title:'Чат',contact:{name:'Контакт',phone:'+79001234567'},messages:[]};
+  for(const format of ['html','json','csv','txt','html-json']) {
+    const files=new Map();ArchiveFormat.add({add:(name,value)=>files.set(name,value)},'chat',ArchiveFormat.prepareChat(chat,{}),format);
+    assert.equal(JSON.parse(files.get('chat/contact.json')).phone,chat.contact.phone);
+    assert.ok(files.get('chat/contact.csv').includes(chat.contact.phone));
+    const anonymous=new Map();ArchiveFormat.add({add:(name,value)=>anonymous.set(name,value)},'chat',ArchiveFormat.prepareChat(chat,{anonymize:true}),format);
+    assert.equal(anonymous.has('chat/contact.json'),false);
+    assert.ok(![...anonymous.values()].join('').includes(chat.contact.phone));
+  }
+});

@@ -7,7 +7,7 @@ const path = require('node:path');
 function loadContent(document, { instantWait = false, capture = null, runtime = null, pageTimer = setTimeout } = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
   const instrumented = (instantWait ? source.replace(/const wait = ms =>[^\n]+/, 'const wait = () => Promise.resolve();') : source)
-    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto, collectParticipants };})();');
+    .replace(/\}\)\(\);\s*$/, 'if (captureOverride) captureButton = captureOverride; globalThis.contentUnderTest = { discover, extract, snapshot, attachmentsOf, exportOpen, openChat, activeChatGuard, mergeOlder, openedTitle, capturePhoto, collectParticipants, collectContact };})();');
   assert.notEqual(instrumented, source, 'content test seam should load');
   const context = {
     document,
@@ -725,4 +725,20 @@ test('loading older headers fills sender names in already collected continuation
  const existing=[item('one',''),item('two',''),item('three','')];
  const older=[item('zero','Анна'),item('one','Анна'),item('two','Анна'),item('three','Анна')];
  const merged=api.mergeOlder(existing,older);assert.equal(merged.gap,false);assert.ok(merged.items.every(message=>message.author==='Анна'));
+});
+
+
+test('contact phone comes only from the profile phone field and profile closes', async () => {
+  let opened=false,closed=false,clicks=0;
+  const field={innerText:'Телефон\n+7 (900) 123-45-67'};
+  const label={textContent:'Телефон',closest:()=>field};
+  const panel={parentElement:null,querySelectorAll:selector=>selector==='*'?[label]:[]};
+  const back={parentElement:panel,click(){opened=false;closed=true;}};
+  const document={body:{},querySelector:selector=>selector==='.openedChat'?{querySelector:()=>({textContent:'Контакт'})}:({click(){opened=true;clicks++;}}),querySelectorAll:()=>opened?[back]:[]};
+  const api=loadContent(document,{instantWait:true});
+  const result=await api.collectContact({},()=>{});
+  assert.equal(result.phone,'+7 (900) 123-45-67');assert.equal(closed,true);
+  assert.equal(await api.collectContact({anonymize:true},()=>{}),null);assert.equal(clicks,1);
+  label.textContent='Описание';closed=false;
+  assert.equal(await api.collectContact({},()=>{}),null);assert.equal(closed,true);
 });

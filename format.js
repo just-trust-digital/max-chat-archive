@@ -54,7 +54,7 @@ const ArchiveFormat = (() => {
   }
   function selected(entry,options) {const type=category(entry);return type==='link'?!!options.links:options.media!==false && options.mediaTypes?.[type]!==false;}
   function prepareChat(chat,options) {
-    return {...chat, messages:filter(chat.messages || [],options), participants:options.anonymize || options.participants===false ? [] : (chat.participants || []), participantsStatus:options.anonymize?'excluded':chat.participantsStatus};
+    return {...chat, contact:options.anonymize ? null : (chat.contact || null), messages:filter(chat.messages || [],options), participants:options.anonymize || options.participants===false ? [] : (chat.participants || []), participantsStatus:options.anonymize?'excluded':chat.participantsStatus};
   }
   function filter(messages, options) {
     return messages.filter(Boolean).filter(item => {
@@ -111,6 +111,10 @@ const ArchiveFormat = (() => {
   function txt(chat) { return `${chat.title}\n${chat.messages.length} сообщений\n\n${chat.messages.map(item => `[${displayDate(item)} ${clock(item.time)}] ${item.author || (item.direction === 'out' ? 'Вы' : 'Собеседник')}\n${item.text}${item.attachments.length ? '\n' + item.attachments.map(a => `${a.name || a.kind}: ${a.localPath || a.url || 'ссылка недоступна'}`).join('\n') : ''}`).join('\n\n')}`; }
   function csv(chat) { return '\ufeff' + ['date', 'time', 'author', 'direction', 'text', 'attachments', 'reactions'].map(csvCell).join(',') + '\r\n' + chat.messages.map(item => [displayDate(item), clock(item.time), item.author, item.direction, item.text, item.attachments.map(a => a.localPath || a.url || a.name).join(' | '), item.reactions.join(' | ')].map(csvCell).join(',')).join('\r\n'); }
   function add(zip, path, chat, format) {
+    if(chat.contact?.phone) {
+      zip.add(`${path}/contact.json`,JSON.stringify(chat.contact,null,2));
+      zip.add(`${path}/contact.csv`,'\ufeff'+['Имя','Телефон'].map(csvCell).join(',')+'\r\n'+[chat.contact.name,chat.contact.phone].map(csvCell).join(','));
+    }
     if(chat.participants?.length) {
       zip.add(`${path}/participants.json`,JSON.stringify({status:chat.participantsStatus || 'partial',participants:chat.participants},null,2));
       zip.add(`${path}/participants.csv`,'\ufeff'+['Имя','Роль','Ссылка'].map(csvCell).join(',')+'\r\n'+chat.participants.map(item=>[item.name,item.role,item.url].map(csvCell).join(',')).join('\r\n'));

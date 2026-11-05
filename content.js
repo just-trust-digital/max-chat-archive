@@ -578,6 +578,41 @@
     throw new Error(`Чат «${info.title}» не найден в текущем списке.`);
   }
 
+  // Read only a labelled phone field in the newly opened profile, never chat text.
+  async function collectContact(options, assertActive) {
+    if(options.anonymize) return null;
+    const backSelector='button[aria-label="Go back"], button[aria-label="Назад"]';
+    const opener=document.querySelector('.openedChat button[aria-label^="Open "][aria-label$="profile"], .openedChat button[aria-label*="профиль"]');
+    if(!opener) return null;
+    const previous=new Set(document.querySelectorAll(backSelector));
+    const name=openedTitle();
+    let back;
+    try {
+      assertActive();opener.click();
+      for(let attempt=0;attempt<20;attempt++) {
+        await wait(150);assertActive();
+        back=[...document.querySelectorAll(backSelector)].find(node=>!previous.has(node));
+        if(!back) continue;
+        let panel=back.parentElement;
+        while(panel && panel!==document.body && !panel.matches?.('.openedChat')) {
+          // Group member lists are not the interlocutor's profile.
+          if([...panel.querySelectorAll('button')].some(node=>/^(Members|Участники)$/.test(node.textContent.trim()))) return null;
+          for(const label of panel.querySelectorAll('*')) {
+            if(!/^(?:Телефон|Номер телефона|Phone|Phone number)$/i.test(label.textContent.trim())) continue;
+            const field=label.closest?.('.cell') || label.parentElement;
+            const text=field?.innerText || field?.textContent || '';
+            const phone=text.match(/(?:\+\d|\d)[\d ()\-\u00a0]{5,}\d/)?.[0]?.trim();
+            if(phone && phone.replace(/\D/g,'').length>=7 && phone.replace(/\D/g,'').length<=15) return {name,phone};
+          }
+          panel=panel.parentElement;
+        }
+      }
+      return null;
+    } finally {
+      back ||= [...document.querySelectorAll(backSelector)].find(node=>!previous.has(node));
+      if(back) {back.click();await wait(150);}
+    }
+  }
   async function collectParticipants(options, progress, assertActive) {
     if(!options.participants || options.anonymize) return {participants:[],participantsStatus:'excluded'};
     const backSelector='button[aria-label="Go back"], button[aria-label="Назад"]';
@@ -660,7 +695,8 @@
           const progress = value => port.postMessage({ type: 'progress', id: message.id, value });
           await waitForVisible(progress, message.chat?.title || openedTitle() || 'MAX', 0);
           const assertActive = message.chat ? await openChat(message.chat, progress) : currentChatGuard();
-          const contacts=await collectParticipants(message.options,progress,assertActive);
+          const contact=await collectContact(message.options,assertActive);
+          const contacts={...await collectParticipants(message.options,progress,assertActive),contact};
           const route=globalThis.location?.pathname || '/';
           const sourceUrl=route!=='/' && globalThis.location?.origin==='https://web.max.ru' ? globalThis.location.origin+route : null;
           const result = {...await exportOpen(message.options, progress, assertActive, value=>checkpoint(message.id,{...value,...contacts})),...contacts,sourceUrl};
